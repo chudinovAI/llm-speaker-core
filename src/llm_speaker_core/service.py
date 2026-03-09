@@ -124,6 +124,28 @@ class LLMService:
         first = parts[0].rstrip(".!?")
         return f"{first}."
 
+    def _finalize_display_tail(self, text: str) -> tuple[str, bool]:
+        text = text.strip()
+        if not text:
+            return text, False
+
+        if re.search(r"[.!?]$", text):
+            return text, False
+
+        # Prefer cutting at the last full sentence if enough content remains.
+        last_punct = max(text.rfind("."), text.rfind("!"), text.rfind("?"))
+        if last_punct >= 0 and last_punct >= int(len(text) * 0.55):
+            return text[: last_punct + 1].strip(), True
+
+        # Otherwise drop the trailing token to avoid hanging partial words.
+        words = text.split()
+        if len(words) > 1:
+            trimmed = " ".join(words[:-1]).rstrip(",;:-")
+            if trimmed:
+                return f"{trimmed}.", True
+
+        return f"{text}.", True
+
     def _enforce_university_identity(self, text: str) -> tuple[str, bool]:
         lower = text.lower()
         wrong_markers = (
@@ -206,6 +228,8 @@ class LLMService:
         limits_applied = limits_applied or changed_identity
         display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
         limits_applied = limits_applied or limited
+        display_text, tail_fixed = self._finalize_display_tail(display_text)
+        limits_applied = limits_applied or tail_fixed
 
         speaker_text = ""
         try:
