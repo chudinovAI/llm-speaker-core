@@ -11,6 +11,18 @@ from llm_speaker_core.rag import LexicalRAG
 from llm_speaker_core.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
+SPEAKER_STOPWORDS = {
+    "что",
+    "как",
+    "где",
+    "когда",
+    "про",
+    "это",
+    "есть",
+    "для",
+    "или",
+    "ли",
+}
 
 
 @dataclass
@@ -62,11 +74,15 @@ class Metrics:
 
 
 class LLMService:
-    def __init__(self, rag: LexicalRAG, llm: OllamaClient) -> None:
+    def __init__(
+        self, rag: LexicalRAG, llm: OllamaClient, speaker_mode: str | None = None
+    ) -> None:
         self.rag = rag
         self.llm = llm
         self.memory = SessionMemory(max_turns=SETTINGS.max_memory_turns)
         self.metrics = Metrics()
+        mode = (speaker_mode or SETTINGS.speaker_mode).lower()
+        self.speaker_mode = mode if mode in {"local", "llm"} else "local"
 
     def _build_display_system_prompt(self) -> str:
         return (
@@ -204,6 +220,36 @@ class LLMService:
                     normalized.append({"role": role, "content": content})
         return normalized
 
+    def _extract_speaker_local(self, display_text: str, user_text: str) -> str:
+        plain = self._to_plain_text(display_text)
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain) if s.strip()]
+        if not sentences:
+            return plain
+
+        query_tokens = {
+            token.lower()
+            for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]+", user_text)
+            if len(token) > 2 and token.lower() not in SPEAKER_STOPWORDS
+        }
+
+        best_sentence = sentences[0]
+        best_score = -10**9
+        for sentence in sentences:
+            sent_tokens = {
+                token.lower()
+                for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]+", sentence)
+                if len(token) > 2
+            }
+            overlap = len(query_tokens & sent_tokens) if query_tokens else 0
+            length_penalty = abs(len(sentence.split()) - 10) * 0.05
+            guap_bonus = 0.35 if "гуап" in sent_tokens else 0.0
+            score = overlap + guap_bonus - length_penalty
+            if score > best_score:
+                best_score = score
+                best_sentence = sentence
+
+        return best_sentence
+
     def handle_query(self, text: str, session_id: str, history: list | None = None) -> GenerationResult:
         started = time.perf_counter()
         fallback_used = False
@@ -232,13 +278,23 @@ class LLMService:
         limits_applied = limits_applied or tail_fixed
 
         speaker_text = ""
-        try:
-            speaker_raw = self.llm.generate(
-                system_prompt=self._build_speaker_system_prompt(),
-                user_prompt=display_text,
-                max_tokens=28,
-            )
-            speaker_text = self._to_plain_text(speaker_raw)
+        if self.speaker_mode == "local":
+            speaker_text = self._extract_speaker_local(display_text, text)
+        else:
+            try:
+                speaker_raw = self.llm.generate(
+                    system_prompt=self._build_speaker_system_prompt(),
+                    user_prompt=display_text,
+                    max_tokens=28,
+                )
+                speaker_text = speaker_raw
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("speaker generation failed: %s", exc)
+                fallback_used = True
+                speaker_text = ""
+
+        if speaker_text:
+            speaker_text = self._to_plain_text(speaker_text)
             speaker_text = self._dedupe_sentences(speaker_text)
             speaker_text, changed_speaker_identity = self._enforce_university_identity(
                 speaker_text
@@ -249,10 +305,6 @@ class LLMService:
                 speaker_text, SETTINGS.max_speaker_words
             )
             limits_applied = limits_applied or speaker_limited
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("speaker generation failed: %s", exc)
-            fallback_used = True
-            speaker_text = ""
 
         if not display_text:
             fallback_used = True

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from llm_speaker_core.rag import LexicalRAG
 from llm_speaker_core.service import LLMService
+from llm_speaker_core.settings import SETTINGS
 
 
 class FakeLLM:
@@ -46,11 +47,12 @@ def test_service_limits_and_memory(tmp_path: Path) -> None:
 
     result = service.handle_query("Расскажи про ГУАП", "s1")
 
-    assert len(result.display_text.split()) <= 120
-    assert len(result.speaker_text.split()) <= 20
+    assert len(result.display_text.split()) <= SETTINGS.max_display_words
+    assert len(result.speaker_text.split()) <= SETTINGS.max_speaker_words
     assert result.used_rag is True
     assert result.fallback_used is False
     assert service.memory.get("s1")
+    assert service.llm.calls == 1
 
 
 def test_service_speaker_fallback(tmp_path: Path) -> None:
@@ -58,7 +60,7 @@ def test_service_speaker_fallback(tmp_path: Path) -> None:
     _make_index(index_path)
 
     rag = LexicalRAG(index_path)
-    service = LLMService(rag=rag, llm=FakeLLM(speaker_should_fail=True))
+    service = LLMService(rag=rag, llm=FakeLLM(speaker_should_fail=True), speaker_mode="llm")
 
     result = service.handle_query("Расскажи про ГУАП", "s2")
 
