@@ -44,6 +44,16 @@ class FakeMenuLikeLLM:
         )
 
 
+class FakeAdmissionVagueLLM:
+    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+        if "Сожми текст" in system_prompt:
+            return "Уточняйте правила в разделе для абитуриентов."
+        return (
+            "Однако, исходя из предоставленного списка возможностей сервиса, "
+            "можно выделить основные категории направлений подготовки."
+        )
+
+
 def _make_index(path: Path) -> None:
     payload = {
         "docs": [
@@ -214,3 +224,28 @@ def test_tuition_menu_like_display_is_replaced_by_summary(tmp_path: Path) -> Non
     result = service.handle_query("Сколько стоит обучение в ГУАП?", "s6")
 
     assert "актуальные цены" in result.display_text.lower()
+
+
+def test_admission_low_evidence_uses_rule_summary(tmp_path: Path) -> None:
+    index_path = tmp_path / "index.json"
+    payload = {
+        "docs": [
+            {
+                "id": "web:1",
+                "source": "https://guap.ru/abitur",
+                "source_type": "web",
+                "title": "Абитуриентам",
+                "text": "Раздел для абитуриентов с правилами и сроками приема.",
+            }
+        ],
+        "doc_tfs": [{"раздел": 1, "абитуриентов": 1, "правилами": 1, "сроками": 1, "приема": 1}],
+        "doc_lens": [5],
+        "doc_freqs": {"раздел": 1, "абитуриентов": 1, "правилами": 1, "сроками": 1, "приема": 1},
+    }
+    index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    rag = LexicalRAG(index_path)
+    service = LLMService(rag=rag, llm=FakeAdmissionVagueLLM(), speaker_mode="llm")
+    result = service.handle_query("Какие направления есть в ГУАПе?", "s7")
+
+    assert "проверьте актуальные правила и сроки" in result.display_text.lower()

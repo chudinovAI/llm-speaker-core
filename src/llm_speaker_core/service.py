@@ -41,6 +41,8 @@ class IntentRule:
     query_boost_terms: tuple[str, ...] = ()
     display_summary: str = ""
     speaker_summary: str = ""
+    min_evidence_for_freeform: float = 0.35
+    min_fact_token_hits: int = 2
 
 
 INTENT_RULES: dict[str, IntentRule] = {
@@ -78,6 +80,8 @@ INTENT_RULES: dict[str, IntentRule] = {
             "Актуальные цены и условия оплаты смотрите в разделе платных образовательных услуг."
         ),
         speaker_summary="Стоимость зависит от программы и формы; актуально в разделе платных услуг ГУАП.",
+        min_evidence_for_freeform=0.3,
+        min_fact_token_hits=2,
     ),
     "admission": IntentRule(
         fact_tokens={"баллы", "абитуриент", "документы", "направления", "поступление"},
@@ -88,6 +92,8 @@ INTENT_RULES: dict[str, IntentRule] = {
             "Проверьте актуальные правила и сроки в разделе для абитуриентов."
         ),
         speaker_summary="Проверьте актуальные правила и сроки в разделе для абитуриентов ГУАП.",
+        min_evidence_for_freeform=0.32,
+        min_fact_token_hits=2,
     ),
     "contacts": IntentRule(
         fact_tokens={"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
@@ -523,13 +529,21 @@ class LLMService:
         return speaker_text
 
     def _apply_intent_display_policy(
-        self, intent: str, display_text: str, rag_sources: list[str]
+        self,
+        intent: str,
+        display_text: str,
+        rag_sources: list[str],
+        evidence_coverage: float,
     ) -> str:
         rule = self._intent_rule(intent)
         if not rule.display_summary:
             return display_text
 
         low = display_text.lower()
+        fact_token_hits = 0
+        if rule.fact_tokens:
+            display_tokens = set(tokenize(display_text))
+            fact_token_hits = len(display_tokens & rule.fact_tokens)
         has_specific_number = bool(re.search(r"\b\d[\d\s]{2,}\s*(руб|₽|год|г\.)\b", low))
         if has_specific_number and intent in {"tuition", "admission"}:
             return display_text
@@ -542,14 +556,29 @@ class LLMService:
             and punctuation <= 1
             and any(k in low for k in ("положение", "формы договоров", "комиссия", "структура"))
         )
-        if not menu_like and len(tokens) <= 36 and not self._is_low_info_display(display_text):
+        quality_gate_failed = (
+            evidence_coverage < rule.min_evidence_for_freeform
+            and fact_token_hits < rule.min_fact_token_hits
+        )
+
+        if (
+            not menu_like
+            and len(tokens) <= 36
+            and not self._is_low_info_display(display_text)
+            and not quality_gate_failed
+        ):
             return display_text
 
         has_trusted_source = any(
             self._matches_any_hint(src.lower(), rule.trusted_source_hints)
             for src in rag_sources
         )
-        if has_trusted_source or menu_like or self._is_low_info_display(display_text):
+        if (
+            has_trusted_source
+            or menu_like
+            or self._is_low_info_display(display_text)
+            or quality_gate_failed
+        ):
             return rule.display_summary
         return display_text
 
@@ -696,7 +725,12 @@ class LLMService:
                 limits_applied = limits_applied or limited
                 display_text, tail_fixed = self._finalize_display_tail(display_text)
                 limits_applied = limits_applied or tail_fixed
-        display_text = self._apply_intent_display_policy(intent, display_text, rag_sources)
+        display_text = self._apply_intent_display_policy(
+            intent=intent,
+            display_text=display_text,
+            rag_sources=rag_sources,
+            evidence_coverage=evidence_coverage,
+        )
         display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
         limits_applied = limits_applied or limited
         display_text, tail_fixed = self._finalize_display_tail(display_text)

@@ -127,6 +127,12 @@ def test_rag_prefers_admission_contact_page(tmp_path: Path) -> None:
     assert hits[0]["source"] == "https://guap.ru/priem"
 
 
+def test_detect_intent_for_directions_query() -> None:
+    rag = LexicalRAG(Path("dummy.json"))
+    intents = rag.detect_intents("Какие направления есть в ГУАПе?")
+    assert "admission" in intents
+
+
 def test_archived_row_detection() -> None:
     old_row = {
         "source_type": "web",
