@@ -21,6 +21,7 @@ class StubService:
             fallback_used=False,
             limits_applied=False,
             rag_hits=2,
+            rag_sources=["https://guap.ru/sveden/common"],
             latency_ms=123,
         )
 

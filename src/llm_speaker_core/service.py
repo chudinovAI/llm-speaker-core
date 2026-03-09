@@ -33,6 +33,7 @@ class GenerationResult:
     fallback_used: bool
     limits_applied: bool
     rag_hits: int
+    rag_sources: list[str]
     latency_ms: int
 
 
@@ -97,8 +98,8 @@ class LLMService:
             "Если вопрос провокационный, отвечай нейтрально и конструктивно. "
             "Ответ должен быть фактологичным и полезным. "
             "Запрещено придумывать даты, названия, статусы и исторические факты. "
-            "Если в предоставленном контексте нет точного факта, прямо скажи: "
-            "'В текущем контексте нет подтвержденных данных'."
+            "Если в доступном фрагменте контекста нет точного факта, прямо скажи: "
+            "'В доступном фрагменте контекста нет точных подтвержденных данных'."
         )
 
     def _build_speaker_system_prompt(self) -> str:
@@ -132,6 +133,27 @@ class LLMService:
             seen.add(key)
             unique.append(part)
         return " ".join(unique).strip() if unique else text.strip()
+
+    def _remove_policy_artifacts(self, text: str) -> tuple[str, bool]:
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+        filtered: list[str] = []
+        changed = False
+        banned_patterns = (
+            r"^важно[:\s]",
+            r"запрещено",
+            r"не может быть другой",
+            r"в других вузах используется похожая аббревиатура",
+        )
+        for part in parts:
+            low = part.lower()
+            if any(re.search(pattern, low) for pattern in banned_patterns):
+                changed = True
+                continue
+            filtered.append(part)
+
+        if not filtered:
+            return text, changed
+        return " ".join(filtered).strip(), changed
 
     def _force_single_sentence(self, text: str) -> str:
         parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
@@ -250,6 +272,32 @@ class LLMService:
 
         return best_sentence
 
+    def _is_fact_sensitive_query(self, text: str) -> bool:
+        low = text.lower()
+        markers = ("адрес", "где", "контакт", "связ", "дата", "когда", "основан", "приемн")
+        return any(m in low for m in markers)
+
+    def _augment_rag_context(self, text: str, rag_chunks: list[dict]) -> list[dict]:
+        if not self._is_fact_sensitive_query(text):
+            return rag_chunks
+
+        has_common = any("/sveden/common" in str(c.get("source", "")) for c in rag_chunks)
+        if has_common:
+            return rag_chunks
+
+        # Pull one extra chunk from a query biased towards contact/location facts.
+        fallback_query = f"{text} адрес контакты sveden common приемная комиссия"
+        extra_chunks = self.rag.search(fallback_query, top_k=max(SETTINGS.rag_top_k + 2, 5))
+        for chunk in extra_chunks:
+            source = str(chunk.get("source", ""))
+            if "/sveden/common" not in source:
+                continue
+            existing_ids = {str(c.get("id")) for c in rag_chunks}
+            if str(chunk.get("id")) not in existing_ids:
+                rag_chunks = [*rag_chunks, chunk]
+            break
+        return rag_chunks
+
     def handle_query(self, text: str, session_id: str, history: list | None = None) -> GenerationResult:
         started = time.perf_counter()
         fallback_used = False
@@ -260,8 +308,10 @@ class LLMService:
             self.memory.set_external(session_id, external_history)
 
         rag_chunks = self.rag.search(text, top_k=SETTINGS.rag_top_k)
+        rag_chunks = self._augment_rag_context(text, rag_chunks)
         rag_hits = len(rag_chunks)
         used_rag = rag_hits > 0
+        rag_sources = [str(c.get("source", "")) for c in rag_chunks]
 
         display_raw = self.llm.generate(
             system_prompt=self._build_display_system_prompt(),
@@ -270,6 +320,8 @@ class LLMService:
         )
         display_text = self._sanitize_markdown_lite(display_raw)
         display_text = self._dedupe_sentences(display_text)
+        display_text, policy_removed = self._remove_policy_artifacts(display_text)
+        limits_applied = limits_applied or policy_removed
         display_text, changed_identity = self._enforce_university_identity(display_text)
         limits_applied = limits_applied or changed_identity
         display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
@@ -296,6 +348,10 @@ class LLMService:
         if speaker_text:
             speaker_text = self._to_plain_text(speaker_text)
             speaker_text = self._dedupe_sentences(speaker_text)
+            speaker_text, speaker_policy_removed = self._remove_policy_artifacts(
+                speaker_text
+            )
+            limits_applied = limits_applied or speaker_policy_removed
             speaker_text, changed_speaker_identity = self._enforce_university_identity(
                 speaker_text
             )
@@ -328,6 +384,7 @@ class LLMService:
             fallback_used=fallback_used,
             limits_applied=limits_applied,
             rag_hits=rag_hits,
+            rag_sources=rag_sources,
             latency_ms=elapsed_ms,
         )
     _GUAP_CANONICAL = (

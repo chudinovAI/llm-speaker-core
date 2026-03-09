@@ -75,6 +75,7 @@ def query(payload: QueryRequest) -> QueryResponse:
             fallback_used=result.fallback_used,
             limits_applied=result.limits_applied,
             rag_hits=result.rag_hits,
+            rag_sources=result.rag_sources,
         ),
     )
 

@@ -17,6 +17,7 @@ class QueryMeta(BaseModel):
     fallback_used: bool
     limits_applied: bool
     rag_hits: int
+    rag_sources: list[str] = []
 
 
 class QueryResponse(BaseModel):
