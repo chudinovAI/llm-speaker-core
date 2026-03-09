@@ -4,10 +4,10 @@ import logging
 import re
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from llm_speaker_core.llm import OllamaClient
-from llm_speaker_core.rag import LexicalRAG
+from llm_speaker_core.rag import LexicalRAG, expand_query, tokenize
 from llm_speaker_core.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,95 @@ SPEAKER_STOPWORDS = {
     "или",
     "ли",
 }
+FACT_TOKENS_BY_INTENT = {
+    "tuition": {"стоимость", "цена", "оплата", "договор", "руб", "обучение", "платное"},
+    "contacts": {"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
+    "location": {"адрес", "корпус", "кампус"},
+    "admission": {"баллы", "абитуриент", "документы", "направления", "поступление"},
+}
+
+
+@dataclass(frozen=True)
+class IntentRule:
+    fact_tokens: set[str] = field(default_factory=set)
+    trusted_source_hints: tuple[str, ...] = ()
+    allowed_source_hints: tuple[str, ...] = ()
+    denied_source_hints: tuple[str, ...] = ()
+    noisy_sentence_markers: tuple[str, ...] = ()
+    query_boost_terms: tuple[str, ...] = ()
+    display_summary: str = ""
+    speaker_summary: str = ""
+
+
+INTENT_RULES: dict[str, IntentRule] = {
+    "tuition": IntentRule(
+        fact_tokens={"стоимость", "цена", "оплата", "договор", "руб", "обучение", "платное"},
+        trusted_source_hints=(
+            "/eif/pay",
+            "/eif/inf_dog",
+            "/eif/price",
+            "/eif/pol_usl",
+            "/sveden/paid_edu",
+            "/priem",
+            "/abitur",
+        ),
+        allowed_source_hints=(
+            "/eif/pay",
+            "/eif/inf_dog",
+            "/eif/price",
+            "/eif/pol_usl",
+            "/sveden/paid_edu",
+            "/priem",
+            "/abitur",
+        ),
+        denied_source_hints=("/sveden/inter",),
+        noisy_sentence_markers=(
+            "кнр",
+            "сиань",
+            "обучение заграницей",
+            "договор о сотрудничестве",
+            "мониторинг до",
+        ),
+        query_boost_terms=("стоимость", "оплата", "договор", "платное образование"),
+        display_summary=(
+            "**Стоимость обучения в ГУАП зависит от программы и формы обучения.**\n"
+            "Актуальные цены и условия оплаты смотрите в разделе платных образовательных услуг."
+        ),
+        speaker_summary="Стоимость зависит от программы и формы; актуально в разделе платных услуг ГУАП.",
+    ),
+    "admission": IntentRule(
+        fact_tokens={"баллы", "абитуриент", "документы", "направления", "поступление"},
+        trusted_source_hints=("/abitur", "/priem", "/admission", "/sveden"),
+        query_boost_terms=("приемная комиссия", "документы", "сроки приема"),
+        display_summary=(
+            "Условия поступления зависят от программы и уровня обучения. "
+            "Проверьте актуальные правила и сроки в разделе для абитуриентов."
+        ),
+        speaker_summary="Проверьте актуальные правила и сроки в разделе для абитуриентов ГУАП.",
+    ),
+    "contacts": IntentRule(
+        fact_tokens={"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
+        trusted_source_hints=("/sveden/common", "/contacts", "/contact", "/abitur"),
+        query_boost_terms=("контакты", "телефон", "адрес"),
+        display_summary="Актуальные контакты лучше смотреть в официальном разделе сведений и контактов ГУАП.",
+        speaker_summary="Актуальные контакты смотрите в официальном разделе контактов ГУАП.",
+    ),
+    "location": IntentRule(
+        fact_tokens={"адрес", "корпус", "кампус"},
+        trusted_source_hints=("/sveden/common", "/contacts", "/address", "/objects"),
+        query_boost_terms=("адрес", "корпус", "кампус"),
+        display_summary="Адреса и корпуса университета доступны в официальном разделе сведений ГУАП.",
+        speaker_summary="Актуальные адреса и корпуса смотрите в официальных сведениях ГУАП.",
+    ),
+    "student_life": IntentRule(
+        fact_tokens={"студенты", "клуб", "театр", "спорт", "активности"},
+        trusted_source_hints=("/studlife", "/students", "/clubs", "/sport"),
+        denied_source_hints=("/it/service/",),
+        query_boost_terms=("студенческие активности", "клубы", "спорт", "театр"),
+        display_summary="Студенческие активности включают клубы, спорт и творческие объединения ГУАП.",
+        speaker_summary="Студенческие активности ГУАП включают клубы, спорт и творческие объединения.",
+    ),
+}
 
 
 @dataclass
@@ -34,6 +123,9 @@ class GenerationResult:
     limits_applied: bool
     rag_hits: int
     rag_sources: list[str]
+    intent: str
+    evidence_coverage: float
+    answer_mode: str
     latency_ms: int
 
 
@@ -242,6 +334,240 @@ class LLMService:
                     normalized.append({"role": role, "content": content})
         return normalized
 
+    def _primary_intent(self, text: str) -> str:
+        intents = self.rag.detect_intents(text)
+        if not intents:
+            return "general"
+        return intents[0]
+
+    def _intent_rule(self, intent: str) -> IntentRule:
+        return INTENT_RULES.get(intent, IntentRule())
+
+    def _matches_any_hint(self, source: str, hints: tuple[str, ...]) -> bool:
+        if not hints:
+            return False
+        source_low = source.lower()
+        return any(h in source_low for h in hints)
+
+    def _estimate_evidence_coverage(self, text: str, rag_chunks: list[dict]) -> float:
+        intent = self._primary_intent(text)
+        query_tokens = set(expand_query(tokenize(text)))
+        fact_tokens = self._intent_rule(intent).fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
+        if fact_tokens:
+            prioritized = {t for t in query_tokens if t in fact_tokens}
+            if prioritized:
+                query_tokens = prioritized
+        if not query_tokens:
+            return 0.0
+        ctx_tokens: set[str] = set()
+        for chunk in rag_chunks:
+            ctx_tokens.update(tokenize(str(chunk.get("text", ""))))
+        coverage = len(query_tokens & ctx_tokens) / max(len(query_tokens), 1)
+        return round(coverage, 4)
+
+    def _verify_grounding(self, answer: str, rag_chunks: list[dict]) -> tuple[str, bool]:
+        """Drop unsupported claims to reduce hallucinations for broad questions."""
+        ctx_tokens: set[str] = set()
+        for chunk in rag_chunks:
+            ctx_tokens.update(tokenize(str(chunk.get("text", ""))))
+
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer) if s.strip()]
+        if not sentences:
+            return answer, False
+
+        kept: list[str] = []
+        changed = False
+        for sent in sentences:
+            if re.fullmatch(r"\s*[\d]+[.)]?\s*", sent) or re.fullmatch(r"\s*[-*•]+\s*", sent):
+                changed = True
+                continue
+            sent_tokens = set(tokenize(sent))
+            # Keep short connective sentences.
+            if len(sent_tokens) <= 3:
+                kept.append(sent)
+                continue
+            overlap = len(sent_tokens & ctx_tokens) / max(len(sent_tokens), 1)
+            if overlap >= 0.28:
+                kept.append(sent)
+            else:
+                changed = True
+
+        if not kept:
+            return "В доступном фрагменте контекста нет точных подтвержденных данных.", True
+        return " ".join(kept).strip(), changed
+
+    def _is_low_info_display(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return True
+        if re.fullmatch(r"\s*[\d]+[.)]?\s*", stripped):
+            return True
+        if re.fullmatch(r"\s*[-*•]+\s*", stripped):
+            return True
+        tokens = tokenize(stripped)
+        return len(tokens) < 4
+
+    def _extractive_grounded_fallback(
+        self, text: str, intent: str, rag_chunks: list[dict]
+    ) -> str:
+        if not rag_chunks:
+            return ""
+
+        rule = self._intent_rule(intent)
+        query_tokens = set(expand_query(tokenize(text)))
+        fact_tokens = rule.fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
+        if fact_tokens:
+            focused = {t for t in query_tokens if t in fact_tokens}
+            if focused:
+                query_tokens = focused
+        if not query_tokens:
+            query_tokens = set(tokenize(text))
+
+        candidates: list[tuple[float, str]] = []
+        for chunk in rag_chunks:
+            source = str(chunk.get("source", "")).lower()
+            if rule.allowed_source_hints and not self._matches_any_hint(
+                source, rule.allowed_source_hints
+            ):
+                continue
+            if rule.denied_source_hints and self._matches_any_hint(
+                source, rule.denied_source_hints
+            ):
+                continue
+
+            chunk_text = str(chunk.get("text", "")).strip()
+            if not chunk_text:
+                continue
+            sentences = [
+                s.strip()
+                for s in re.split(r"(?<=[.!?])\s+|\n+", chunk_text)
+                if s.strip() and len(s.split()) >= 4
+            ]
+            for sent in sentences:
+                sent_low = sent.lower()
+                if rule.noisy_sentence_markers and any(
+                    marker in sent_low for marker in rule.noisy_sentence_markers
+                ):
+                    continue
+                if len(sent.split()) > 32 and fact_tokens and not (set(tokenize(sent)) & fact_tokens):
+                    continue
+
+                sent_tokens = set(tokenize(sent))
+                if not sent_tokens:
+                    continue
+                overlap = len(query_tokens & sent_tokens) / max(len(query_tokens), 1)
+                fact_overlap = (
+                    len(fact_tokens & sent_tokens) / max(len(fact_tokens), 1)
+                    if fact_tokens
+                    else 0.0
+                )
+                if overlap == 0 and fact_overlap == 0:
+                    continue
+                source_bonus = 0.0
+                if rule.trusted_source_hints and self._matches_any_hint(
+                    source, rule.trusted_source_hints
+                ):
+                    source_bonus = 0.18
+                score = overlap + 0.6 * fact_overlap + source_bonus
+                candidates.append((score, sent))
+
+        if not candidates:
+            return ""
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        chosen: list[str] = []
+        seen: set[str] = set()
+        for _, sent in candidates:
+            key = re.sub(r"\s+", " ", sent.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            chosen.append(sent)
+            if len(chosen) >= 2:
+                break
+
+        if not chosen:
+            return ""
+        return " ".join(chosen).strip()
+
+    def _has_high_trust_source(self, intent: str, rag_chunks: list[dict]) -> bool:
+        hints = self._intent_rule(intent).trusted_source_hints
+        if not hints:
+            return False
+        for chunk in rag_chunks:
+            source = str(chunk.get("source", "")).lower()
+            if any(h in source for h in hints):
+                return True
+        return False
+
+    def _apply_intent_speaker_policy(
+        self, intent: str, speaker_text: str, rag_sources: list[str], display_text: str
+    ) -> str:
+        rule = self._intent_rule(intent)
+        if not rule.speaker_summary:
+            return speaker_text
+
+        has_trusted_source = any(
+            self._matches_any_hint(src.lower(), rule.trusted_source_hints)
+            for src in rag_sources
+        )
+
+        has_specific_price = bool(
+            re.search(r"\b\d[\d\s]{2,}\s*(руб|₽)\b", display_text.lower())
+        )
+        if has_specific_price and intent == "tuition":
+            return speaker_text
+
+        if has_trusted_source or self._is_low_info_display(speaker_text):
+            return rule.speaker_summary
+        return speaker_text
+
+    def _apply_intent_display_policy(
+        self, intent: str, display_text: str, rag_sources: list[str]
+    ) -> str:
+        rule = self._intent_rule(intent)
+        if not rule.display_summary:
+            return display_text
+
+        low = display_text.lower()
+        has_specific_number = bool(re.search(r"\b\d[\d\s]{2,}\s*(руб|₽|год|г\.)\b", low))
+        if has_specific_number and intent in {"tuition", "admission"}:
+            return display_text
+
+        # Detect menu-like extraction: many short title fragments and weak punctuation.
+        tokens = tokenize(display_text)
+        punctuation = sum(display_text.count(ch) for ch in ".!?")
+        menu_like = (
+            len(tokens) > 20
+            and punctuation <= 1
+            and any(k in low for k in ("положение", "формы договоров", "комиссия", "структура"))
+        )
+        if not menu_like and len(tokens) <= 36 and not self._is_low_info_display(display_text):
+            return display_text
+
+        has_trusted_source = any(
+            self._matches_any_hint(src.lower(), rule.trusted_source_hints)
+            for src in rag_sources
+        )
+        if has_trusted_source or menu_like or self._is_low_info_display(display_text):
+            return rule.display_summary
+        return display_text
+
+    def _filter_rag_chunks_by_intent(self, intent: str, rag_chunks: list[dict]) -> list[dict]:
+        rule = self._intent_rule(intent)
+        if not rule.allowed_source_hints and not rule.denied_source_hints:
+            return rag_chunks
+
+        filtered: list[dict] = []
+        for chunk in rag_chunks:
+            source = str(chunk.get("source", "")).lower()
+            if rule.denied_source_hints and self._matches_any_hint(source, rule.denied_source_hints):
+                continue
+            if rule.allowed_source_hints and not self._matches_any_hint(source, rule.allowed_source_hints):
+                continue
+            filtered.append(chunk)
+        return filtered or rag_chunks
+
     def _extract_speaker_local(self, display_text: str, user_text: str) -> str:
         plain = self._to_plain_text(display_text)
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain) if s.strip()]
@@ -274,23 +600,34 @@ class LLMService:
 
     def _is_fact_sensitive_query(self, text: str) -> bool:
         low = text.lower()
-        markers = ("адрес", "где", "контакт", "связ", "дата", "когда", "основан", "приемн")
-        return any(m in low for m in markers)
+        base_markers = {"адрес", "контакт", "связ", "дата", "когда", "основан", "где"}
+        dynamic_markers: set[str] = set(base_markers)
+        for rule in INTENT_RULES.values():
+            for token in rule.fact_tokens:
+                if len(token) >= 4:
+                    dynamic_markers.add(token[:5])
+        return any(marker in low for marker in dynamic_markers)
 
     def _augment_rag_context(self, text: str, rag_chunks: list[dict]) -> list[dict]:
         if not self._is_fact_sensitive_query(text):
             return rag_chunks
 
-        has_common = any("/sveden/common" in str(c.get("source", "")) for c in rag_chunks)
-        if has_common:
+        intent = self._primary_intent(text)
+        rule = self._intent_rule(intent)
+        if not rule.query_boost_terms:
             return rag_chunks
 
-        # Pull one extra chunk from a query biased towards contact/location facts.
-        fallback_query = f"{text} адрес контакты sveden common приемная комиссия"
+        fallback_query = f"{text} {' '.join(rule.query_boost_terms)}"
         extra_chunks = self.rag.search(fallback_query, top_k=max(SETTINGS.rag_top_k + 2, 5))
         for chunk in extra_chunks:
-            source = str(chunk.get("source", ""))
-            if "/sveden/common" not in source:
+            source = str(chunk.get("source", "")).lower()
+            if rule.trusted_source_hints and not self._matches_any_hint(
+                source, rule.trusted_source_hints
+            ):
+                continue
+            if rule.denied_source_hints and self._matches_any_hint(
+                source, rule.denied_source_hints
+            ):
                 continue
             existing_ids = {str(c.get("id")) for c in rag_chunks}
             if str(chunk.get("id")) not in existing_ids:
@@ -307,11 +644,14 @@ class LLMService:
         if external_history:
             self.memory.set_external(session_id, external_history)
 
+        intent = self._primary_intent(text)
         rag_chunks = self.rag.search(text, top_k=SETTINGS.rag_top_k)
         rag_chunks = self._augment_rag_context(text, rag_chunks)
+        rag_chunks = self._filter_rag_chunks_by_intent(intent, rag_chunks)
         rag_hits = len(rag_chunks)
         used_rag = rag_hits > 0
         rag_sources = [str(c.get("source", "")) for c in rag_chunks]
+        evidence_coverage = self._estimate_evidence_coverage(text, rag_chunks)
 
         display_raw = self.llm.generate(
             system_prompt=self._build_display_system_prompt(),
@@ -322,8 +662,41 @@ class LLMService:
         display_text = self._dedupe_sentences(display_text)
         display_text, policy_removed = self._remove_policy_artifacts(display_text)
         limits_applied = limits_applied or policy_removed
+        display_text, grounding_changed = self._verify_grounding(display_text, rag_chunks)
+        limits_applied = limits_applied or grounding_changed
         display_text, changed_identity = self._enforce_university_identity(display_text)
         limits_applied = limits_applied or changed_identity
+        display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
+        limits_applied = limits_applied or limited
+        display_text, tail_fixed = self._finalize_display_tail(display_text)
+        limits_applied = limits_applied or tail_fixed
+        should_force_extractive = (
+            "нет точных подтвержденных данных" in display_text.lower()
+            or self._is_low_info_display(display_text)
+        )
+        if (
+            should_force_extractive
+            and rag_hits > 0
+            and (
+                evidence_coverage >= 0.3
+                or self._has_high_trust_source(intent, rag_chunks)
+            )
+        ):
+            extractive = self._extractive_grounded_fallback(text, intent, rag_chunks)
+            if extractive:
+                display_text = self._sanitize_markdown_lite(extractive)
+                display_text = self._dedupe_sentences(display_text)
+                display_text, changed_identity = self._enforce_university_identity(
+                    display_text
+                )
+                limits_applied = limits_applied or changed_identity
+                display_text, limited = self._limit_words(
+                    display_text, SETTINGS.max_display_words
+                )
+                limits_applied = limits_applied or limited
+                display_text, tail_fixed = self._finalize_display_tail(display_text)
+                limits_applied = limits_applied or tail_fixed
+        display_text = self._apply_intent_display_policy(intent, display_text, rag_sources)
         display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
         limits_applied = limits_applied or limited
         display_text, tail_fixed = self._finalize_display_tail(display_text)
@@ -357,6 +730,12 @@ class LLMService:
             )
             limits_applied = limits_applied or changed_speaker_identity
             speaker_text = self._force_single_sentence(speaker_text)
+            speaker_text = self._apply_intent_speaker_policy(
+                intent=intent,
+                speaker_text=speaker_text,
+                rag_sources=rag_sources,
+                display_text=display_text,
+            )
             speaker_text, speaker_limited = self._limit_words(
                 speaker_text, SETTINGS.max_speaker_words
             )
@@ -365,6 +744,10 @@ class LLMService:
         if not display_text:
             fallback_used = True
             display_text = SETTINGS.fallback_text
+
+        answer_mode = "grounded"
+        if "нет точных подтвержденных данных" in display_text.lower():
+            answer_mode = "uncertain"
 
         self.memory.add_turn(session_id=session_id, user_text=text, assistant_text=display_text)
 
@@ -385,6 +768,9 @@ class LLMService:
             limits_applied=limits_applied,
             rag_hits=rag_hits,
             rag_sources=rag_sources,
+            intent=intent,
+            evidence_coverage=evidence_coverage,
+            answer_mode=answer_mode,
             latency_ms=elapsed_ms,
         )
     _GUAP_CANONICAL = (

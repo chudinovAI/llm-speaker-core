@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 class Config:
     START_URL: str = "https://guap.ru"
+    SEED_URLS: tuple[str, ...] = (
+        "https://guap.ru/sveden/common",
+        "https://guap.ru/eif/pay",
+        "https://guap.ru/eif/inf_dog",
+        "https://guap.ru/studlife/theatre",
+        "https://guap.ru/targets/studs",
+        "https://guap.ru/priem",
+        "https://guap.ru/abitur",
+    )
     OUTPUT_FILE: str = "suai_facts.txt"
     DOC_DIR: str = "guap_docs"
     MAX_PAGES: int = 200
@@ -28,6 +37,27 @@ class Config:
     MAX_FILE_SIZE_MB: int = 25
     USER_AGENT: str = "Mozilla/5.0 (compatible; GuapStudentCrawler/1.0)"
     CONCURRENT_DOC_DOWNLOADS: int = 5
+    SECTION_PAGE_LIMITS: dict[str, int] = {"pubs": 8, "messages": 8}
+    DOC_URL_ALLOW_HINTS: tuple[str, ...] = (
+        "/sveden/",
+        "/eif/",
+        "/priem",
+        "/abitur",
+        "stoim",
+        "oplata",
+        "dogovor",
+        "pravila",
+        "polozhen",
+        "contact",
+        "address",
+    )
+    DOC_URL_SKIP_HINTS: tuple[str, ...] = (
+        "sbor",
+        "sputnik",
+        "program",
+        "/pubs/",
+        "/messages/",
+    )
 
 
 class ContentProcessor:
@@ -121,6 +151,7 @@ class Crawler:
         self.document_links: set[str] = set()
         self.all_crawled_text: list[str] = []
         self.session: aiohttp.ClientSession | None = None
+        self.section_counts: dict[str, int] = {}
         self.doc_download_semaphore = asyncio.Semaphore(
             self.config.CONCURRENT_DOC_DOWNLOADS
         )
@@ -148,9 +179,36 @@ class Crawler:
             return False
         if parsed.scheme not in {"http", "https"}:
             return False
+        if parsed.path.startswith("/!http") or parsed.path.startswith("/!https"):
+            return False
         if parsed.path.endswith("/search") or parsed.path.endswith("/search/"):
             return False
         if re.search(r"\.(zip|rar|tar|gz|exe|jpg|png|gif|mp4)$", parsed.path.lower()):
+            return False
+        return True
+
+    def _section_key(self, url: str) -> str:
+        parsed = urlparse(url)
+        parts = [p for p in parsed.path.lower().split("/") if p]
+        return parts[0] if parts else "root"
+
+    def _section_limit_reached(self, url: str) -> bool:
+        key = self._section_key(url)
+        limit = self.config.SECTION_PAGE_LIMITS.get(key)
+        if limit is None:
+            return False
+        return self.section_counts.get(key, 0) >= limit
+
+    def _register_section_visit(self, url: str) -> None:
+        key = self._section_key(url)
+        self.section_counts[key] = self.section_counts.get(key, 0) + 1
+
+    def is_relevant_doc_link(self, url: str) -> bool:
+        path = urlparse(url).path.lower()
+        if any(h in path for h in self.config.DOC_URL_SKIP_HINTS):
+            return False
+        allow_hints = self.config.DOC_URL_ALLOW_HINTS
+        if allow_hints and not any(h in path for h in allow_hints):
             return False
         return True
 
@@ -201,8 +259,12 @@ class Crawler:
             if url in self.visited_urls or not self.is_valid_url(url):
                 self.queue.task_done()
                 continue
+            if self._section_limit_reached(url):
+                self.queue.task_done()
+                continue
 
             self.visited_urls.add(url)
+            self._register_section_visit(url)
             _ = progress_bar.update(1)
 
             try:
@@ -246,7 +308,8 @@ class Crawler:
 
                 path_lower = urlparse(normalized_link).path.lower()
                 if path_lower.endswith((".pdf", ".docx", ".doc")):
-                    self.document_links.add(normalized_link)
+                    if self.is_relevant_doc_link(normalized_link):
+                        self.document_links.add(normalized_link)
                 elif (
                     normalized_link not in self.visited_urls
                     and len(self.visited_urls) < self.config.MAX_PAGES
@@ -265,7 +328,11 @@ class Crawler:
         start_url = self.canonicalize_url(self.config.START_URL)
         if not start_url:
             raise ValueError(f"Invalid START_URL: {self.config.START_URL}")
-        self.queue.put_nowait(start_url)
+        seed_urls = [self.config.START_URL, *self.config.SEED_URLS]
+        for seed in seed_urls:
+            normalized = self.canonicalize_url(seed)
+            if normalized:
+                self.queue.put_nowait(normalized)
         async with aiohttp.ClientSession(
             headers={"User-Agent": self.config.USER_AGENT}
         ) as session:

@@ -18,6 +18,9 @@ class QueryMeta(BaseModel):
     limits_applied: bool
     rag_hits: int
     rag_sources: list[str] = []
+    intent: str = "general"
+    evidence_coverage: float = 0.0
+    answer_mode: str = "grounded"
 
 
 class QueryResponse(BaseModel):

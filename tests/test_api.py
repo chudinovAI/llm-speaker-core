@@ -22,6 +22,9 @@ class StubService:
             limits_applied=False,
             rag_hits=2,
             rag_sources=["https://guap.ru/sveden/common"],
+            intent="general",
+            evidence_coverage=0.8,
+            answer_mode="grounded",
             latency_ms=123,
         )
 
