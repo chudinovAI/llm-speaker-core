@@ -1,5 +1,5 @@
 def main():
-    print("Hello from llm-speaker-core!")
+    print("Use 'uv run llm-api' to start the server.")
 
 
 if __name__ == "__main__":

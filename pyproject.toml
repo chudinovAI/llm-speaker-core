@@ -1,13 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "llm-speaker-core"
 version = "0.1.0"
-description = "Add your description here"
+description = "LLM core for smart speaker: data cleaning, RAG, and text API."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.13.2",
     "bs4>=0.0.2",
+    "fastapi>=0.116.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.7",
     "pypdf>=6.4.2",
+    "pytest>=8.4.1",
     "python-docx>=1.2.0",
+    "uvicorn>=0.35.0",
     "tqdm>=4.67.1",
 ]
+
+[project.scripts]
+llm-clean-data = "llm_speaker_core.clean_data:main"
+llm-build-index = "llm_speaker_core.indexer:main"
+llm-api = "llm_speaker_core.api:main"
+llm-eval-rag = "llm_speaker_core.evaluate_rag:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

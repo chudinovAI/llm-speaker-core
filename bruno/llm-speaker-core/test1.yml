@@ -1,0 +1,107 @@
+info:
+  name: test1
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://127.0.0.1:8000/query
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "text": "Расскажи про ГУАП",
+        "session_id": "demo-1"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: test1
+    request:
+      url: http://127.0.0.1:8000/query
+      method: POST
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "text": "Расскажи про ГУАП",
+            "session_id": "demo-1"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 09 Mar 2026 11:46:55 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "2069"
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "display_text": "ГУАП — Санкт-Петербургский государственный университет аэрокосмического приборостроения. **История и статус:**Учреждение было основано в 1992 году как филиал Санкт-Петербургского политехнического университета имени М.В. Ломоносова. В 2014 году оно стало федеральным государственным автономным образовательным учреждением высшего образования (ФГАОУ ВО). Это означает высокий уровень государственной поддержки и независимости в управлении. **Направления деятельности:**ГУАП специализируется на аэрокосмической отрасли. Основные направления включают: * Проектирование и производство авиационного оборудования; * Разработка систем навигации и управления летательными аппаратами; * Создание средств контроля и мониторинга в космической сфере. **Особенности:**Как автономное учреждение, ГУАП имеет высокий уровень автономии в управлении образовательным",
+            "speaker_text": "СанктПетербургский государственный университет аэрокосмического приборостроения — это федеральное государственное автономное образовательное учреждение высшего образования, основанное в 1992 году",
+            "meta": {
+              "latency_ms": 23996,
+              "used_rag": true,
+              "fallback_used": false,
+              "limits_applied": true,
+              "rag_hits": 3
+            }
+          }
+  - name: test2
+    request:
+      url: http://127.0.0.1:8000/query
+      method: POST
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "text": "Расскажи про ГУАП",
+            "session_id": "demo-1"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: date
+          value: Mon, 09 Mar 2026 12:32:54 GMT
+        - name: server
+          value: uvicorn
+        - name: content-length
+          value: "1072"
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "display_text": "ГУАП — это Федеральное государственное автономное образовательное учреждение высшего образования. Это сокращенная форма названия, которая расшифровывается как «Санкт-Петербургский государственный университет аэрокосмического приборостроения». В текущем контексте нет подтвержденных данных о дополнительных фактах или статусах организации, за исключением полного наименования и официального сокращения.",
+            "speaker_text": "ГУАП — это Санкт-Петербургский государственный университет аэрокосмического приборостроения.",
+            "meta": {
+              "latency_ms": 17351,
+              "used_rag": true,
+              "fallback_used": false,
+              "limits_applied": false,
+              "rag_hits": 2
+            }
+          }
