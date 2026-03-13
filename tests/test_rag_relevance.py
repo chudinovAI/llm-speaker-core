@@ -178,3 +178,52 @@ def test_build_multi_index_skips_archived_for_sensitive_intents(tmp_path: Path) 
     doc_ids = {doc["id"] for doc in tuition_payload["docs"]}
     assert "web:new" in doc_ids
     assert "web:old" not in doc_ids
+
+
+def test_build_multi_index_manifest_uses_relative_paths(tmp_path: Path) -> None:
+    rows = [
+        {
+            "id": "web:1",
+            "source_type": "web",
+            "source": "https://guap.ru/sveden/common",
+            "title": "Основные сведения",
+            "date": "2025",
+            "text": "ГУАП в Санкт-Петербурге.",
+        }
+    ]
+    manifest = tmp_path / "rag_index.json"
+    build_multi_index(rows, manifest)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["format"] == "multi_v1"
+    assert payload["indexes"]["general"] == "rag_index.general.json"
+
+
+def test_rag_loads_manifest_with_stale_absolute_paths_from_local_directory(tmp_path: Path) -> None:
+    docs = [
+        {
+            "id": "web:1",
+            "source": "https://guap.ru/sveden/common",
+            "source_type": "web",
+            "title": "Основные сведения",
+            "text": "ГУАП находится в Санкт-Петербурге.",
+        }
+    ]
+    sub_index = tmp_path / "rag_index.general.json"
+    _write_single_index(sub_index, docs)
+    manifest = tmp_path / "rag_index.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": "multi_v1",
+                "indexes": {
+                    "general": "/Users/andreychudinov/Documents/Projects/llm-speaker-core/data/rag_index.general.json"
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    rag = LexicalRAG(manifest)
+    hits = rag.search("Где находится ГУАП?", top_k=1)
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/sveden/common"

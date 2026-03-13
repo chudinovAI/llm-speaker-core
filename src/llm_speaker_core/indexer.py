@@ -245,7 +245,7 @@ def build_multi_index(cleaned_rows: list[dict], index_path: Path) -> dict:
         sub_path = out_dir / f"{stem}.{name}{suffix}"
         report = build_index(rows, sub_path)
         index_reports[name] = report
-        index_map[name] = str(sub_path)
+        index_map[name] = sub_path.name
 
     manifest = {
         "format": "multi_v1",
@@ -255,7 +255,10 @@ def build_multi_index(cleaned_rows: list[dict], index_path: Path) -> dict:
     return {
         "index_path": str(index_path),
         "format": "multi_v1",
-        "indexes": {k: {"doc_count": v["doc_count"], "path": index_map[k]} for k, v in index_reports.items()},
+        "indexes": {
+            k: {"doc_count": v["doc_count"], "path": str(out_dir / index_map[k])}
+            for k, v in index_reports.items()
+        },
     }
 
 

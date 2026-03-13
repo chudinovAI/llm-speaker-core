@@ -204,6 +204,19 @@ class LexicalRAG:
             avg_doc_len=avg_doc_len,
         )
 
+    def _resolve_index_path(self, sub_path: str) -> Path:
+        raw_path = Path(sub_path)
+        if raw_path.is_absolute() and raw_path.exists():
+            return raw_path
+        if not raw_path.is_absolute():
+            candidate = (self.index_path.parent / raw_path).resolve()
+            if candidate.exists():
+                return candidate
+        fallback = (self.index_path.parent / raw_path.name).resolve()
+        if fallback.exists():
+            return fallback
+        return raw_path
+
     def load(self) -> None:
         if not self.index_path.exists():
             raise FileNotFoundError(f"RAG index not found: {self.index_path}")
@@ -213,7 +226,7 @@ class LexicalRAG:
         if root_payload.get("format") == "multi_v1":
             index_map = root_payload.get("indexes", {})
             for name, sub_path in index_map.items():
-                p = Path(sub_path)
+                p = self._resolve_index_path(str(sub_path))
                 if p.exists():
                     self.indexes[name] = self._load_payload(p)
             if "general" not in self.indexes:
