@@ -10,5 +10,7 @@ wheels/
 *.pdf
 data/
 *.json
+*.jsonl
+guap_docs/
 # Virtual environments
 .venv
