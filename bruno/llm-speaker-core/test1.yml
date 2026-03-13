@@ -13,7 +13,7 @@ http:
     type: json
     data: |-
       {
-        "text": "Расскажи про ГУАП",
+        "text": "Какие направление есть в ГУАПе",
         "session_id": "demo-1"
       }
   auth: inherit
