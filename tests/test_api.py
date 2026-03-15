@@ -13,7 +13,9 @@ class StubService:
     def __init__(self) -> None:
         self.metrics = self.StubMetrics()
 
-    def handle_query(self, text: str, session_id: str, history=None) -> GenerationResult:
+    def handle_query(
+        self, text: str, session_id: str, history=None
+    ) -> GenerationResult:
         return GenerationResult(
             display_text="**ГУАП**: это краткий ответ для дисплея.",
             speaker_text="ГУАП: краткий ответ.",

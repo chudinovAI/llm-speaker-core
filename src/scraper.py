@@ -135,7 +135,9 @@ class DocumentHandler:
             for i, text in enumerate(results):
                 if text:
                     filename = os.path.basename(doc_paths[i])
-                    all_doc_text.append(f"--- Источник Документ: {filename} ---\n{text}")
+                    all_doc_text.append(
+                        f"--- Источник Документ: {filename} ---\n{text}"
+                    )
         return "\n\n".join(all_doc_text)
 
 

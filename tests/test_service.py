@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import cast
 
 from llm_speaker_core.rag import LexicalRAG
 from llm_speaker_core.service import LLMService
@@ -11,7 +12,9 @@ class FakeLLM:
         self.speaker_should_fail = speaker_should_fail
         self.calls = 0
 
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         self.calls += 1
         if "Сожми текст" in system_prompt:
             if self.speaker_should_fail:
@@ -21,19 +24,25 @@ class FakeLLM:
 
 
 class FakeHallucinatingLLM:
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         return "Точная стоимость обучения составляет уникальную сумму, недоступную в контексте."
 
 
 class FakeListOnlyLLM:
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         if "Сожми текст" in system_prompt:
             return "2."
         return "2."
 
 
 class FakeMenuLikeLLM:
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         if "Сожми текст" in system_prompt:
             return "Стоимость зависит от программы и формы."
         return (
@@ -45,7 +54,9 @@ class FakeMenuLikeLLM:
 
 
 class FakeAdmissionVagueLLM:
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         if "Сожми текст" in system_prompt:
             return "Уточняйте правила в разделе для абитуриентов."
         return (
@@ -86,7 +97,7 @@ def test_service_limits_and_memory(tmp_path: Path) -> None:
     assert result.used_rag is True
     assert result.fallback_used is False
     assert service.memory.get("s1")
-    assert service.llm.calls == 1
+    assert cast(FakeLLM, service.llm).calls == 1
 
 
 def test_service_speaker_fallback(tmp_path: Path) -> None:
@@ -94,7 +105,9 @@ def test_service_speaker_fallback(tmp_path: Path) -> None:
     _make_index(index_path)
 
     rag = LexicalRAG(index_path)
-    service = LLMService(rag=rag, llm=FakeLLM(speaker_should_fail=True), speaker_mode="llm")
+    service = LLMService(
+        rag=rag, llm=FakeLLM(speaker_should_fail=True), speaker_mode="llm"
+    )
 
     result = service.handle_query("Расскажи про ГУАП", "s2")
 
@@ -103,7 +116,9 @@ def test_service_speaker_fallback(tmp_path: Path) -> None:
     assert result.fallback_used is True
 
 
-def test_service_uses_extractive_fallback_when_grounding_drops_answer(tmp_path: Path) -> None:
+def test_service_uses_extractive_fallback_when_grounding_drops_answer(
+    tmp_path: Path,
+) -> None:
     index_path = tmp_path / "index.json"
     payload = {
         "docs": [
@@ -162,9 +177,17 @@ def test_tuition_speaker_policy_prefers_actionable_summary(tmp_path: Path) -> No
                 "text": "Стоимость обучения зависит от программы и формы обучения.",
             }
         ],
-        "doc_tfs": [{"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1}],
+        "doc_tfs": [
+            {"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1}
+        ],
         "doc_lens": [5],
-        "doc_freqs": {"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1},
+        "doc_freqs": {
+            "стоимость": 1,
+            "обучения": 1,
+            "зависит": 1,
+            "программы": 1,
+            "формы": 1,
+        },
     }
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
@@ -187,9 +210,17 @@ def test_low_info_display_is_replaced_by_extractive(tmp_path: Path) -> None:
                 "text": "Стоимость обучения зависит от программы и формы обучения.",
             }
         ],
-        "doc_tfs": [{"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1}],
+        "doc_tfs": [
+            {"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1}
+        ],
         "doc_lens": [5],
-        "doc_freqs": {"стоимость": 1, "обучения": 1, "зависит": 1, "программы": 1, "формы": 1},
+        "doc_freqs": {
+            "стоимость": 1,
+            "обучения": 1,
+            "зависит": 1,
+            "программы": 1,
+            "формы": 1,
+        },
     }
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
@@ -213,9 +244,17 @@ def test_tuition_menu_like_display_is_replaced_by_summary(tmp_path: Path) -> Non
                 "text": "Стоимость обучения и формы договоров в разделе платных услуг.",
             }
         ],
-        "doc_tfs": [{"стоимость": 1, "обучения": 1, "формы": 1, "договоров": 1, "разделе": 1}],
+        "doc_tfs": [
+            {"стоимость": 1, "обучения": 1, "формы": 1, "договоров": 1, "разделе": 1}
+        ],
         "doc_lens": [5],
-        "doc_freqs": {"стоимость": 1, "обучения": 1, "формы": 1, "договоров": 1, "разделе": 1},
+        "doc_freqs": {
+            "стоимость": 1,
+            "обучения": 1,
+            "формы": 1,
+            "договоров": 1,
+            "разделе": 1,
+        },
     }
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
@@ -238,9 +277,17 @@ def test_admission_low_evidence_uses_rule_summary(tmp_path: Path) -> None:
                 "text": "Раздел для абитуриентов с правилами и сроками приема.",
             }
         ],
-        "doc_tfs": [{"раздел": 1, "абитуриентов": 1, "правилами": 1, "сроками": 1, "приема": 1}],
+        "doc_tfs": [
+            {"раздел": 1, "абитуриентов": 1, "правилами": 1, "сроками": 1, "приема": 1}
+        ],
         "doc_lens": [5],
-        "doc_freqs": {"раздел": 1, "абитуриентов": 1, "правилами": 1, "сроками": 1, "приема": 1},
+        "doc_freqs": {
+            "раздел": 1,
+            "абитуриентов": 1,
+            "правилами": 1,
+            "сроками": 1,
+            "приема": 1,
+        },
     }
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 

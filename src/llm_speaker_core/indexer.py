@@ -145,7 +145,9 @@ def _row_intent_tags(row: dict) -> set[str]:
     if _has_path_hint(path, ("/priem", "/abitur", "/admission")):
         admission_score += 2
     admission_score += min(
-        _prefix_count(tokens, ("поступ", "абитур", "приемн", "приёмн", "балл", "документ")),
+        _prefix_count(
+            tokens, ("поступ", "абитур", "приемн", "приёмн", "балл", "документ")
+        ),
         2,
     )
     if _prefix_count(tokens, ("комисси", "егэ", "вступит", "направлен")) >= 2:
@@ -159,7 +161,10 @@ def _row_intent_tags(row: dict) -> set[str]:
     if _has_path_hint(path, ("/contacts", "/contact", "/priem", "/sveden/common")):
         contacts_score += 2
     contacts_score += min(
-        _prefix_count(tokens, ("контакт", "телефон", "email", "почт", "приемн", "приёмн", "комисси")),
+        _prefix_count(
+            tokens,
+            ("контакт", "телефон", "email", "почт", "приемн", "приёмн", "комисси"),
+        ),
         2,
     )
     if _prefix_count(tokens, ("горяч", "линия", "адрес")) >= 2:
@@ -172,7 +177,9 @@ def _row_intent_tags(row: dict) -> set[str]:
     location_score = 0
     if _has_path_hint(path, ("/contacts", "/sveden/common", "/map", "/address")):
         location_score += 2
-    location_score += min(_prefix_count(tokens, ("адрес", "наход", "корпус", "кампус")), 2)
+    location_score += min(
+        _prefix_count(tokens, ("адрес", "наход", "корпус", "кампус")), 2
+    )
     if location_score >= 2:
         tags.add("location")
 
@@ -180,17 +187,24 @@ def _row_intent_tags(row: dict) -> set[str]:
     if _has_path_hint(path, ("/studlife", "/students", "/clubs", "/sport")):
         student_life_score += 2
     student_life_score += min(
-        _prefix_count(tokens, ("студен", "круж", "клуб", "театр", "спорт", "волонтер", "актив")),
+        _prefix_count(
+            tokens, ("студен", "круж", "клуб", "театр", "спорт", "волонтер", "актив")
+        ),
         2,
     )
     if student_life_score >= 2:
         tags.add("student_life")
 
     tuition_score = 0
-    if _has_path_hint(path, ("/eif/pay", "/eif/inf_dog", "/pay", "/tuition", "/priem", "/abitur")):
+    if _has_path_hint(
+        path, ("/eif/pay", "/eif/inf_dog", "/pay", "/tuition", "/priem", "/abitur")
+    ):
         tuition_score += 2
     tuition_score += min(
-        _prefix_count(tokens, ("стоим", "оплат", "платн", "договор", "контракт", "внебюджет", "кредит")),
+        _prefix_count(
+            tokens,
+            ("стоим", "оплат", "платн", "договор", "контракт", "внебюджет", "кредит"),
+        ),
         2,
     )
     if _prefix_count(tokens, ("обучен", "бакалавр", "магистр", "специалит")) >= 2:
@@ -251,7 +265,9 @@ def build_multi_index(cleaned_rows: list[dict], index_path: Path) -> dict:
         "format": "multi_v1",
         "indexes": index_map,
     }
-    index_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    index_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return {
         "index_path": str(index_path),
         "format": "multi_v1",

@@ -153,7 +153,9 @@ def _chunk_lines(lines: list[str], chunk_size: int = 8) -> list[str]:
     return paragraphs
 
 
-def clean_sections(sections: list[Section], min_words: int = 8) -> tuple[list[dict], Stats]:
+def clean_sections(
+    sections: list[Section], min_words: int = 8
+) -> tuple[list[dict], Stats]:
     stats = Stats()
     stats.sections_total = len(sections)
     stats.sections_web = sum(1 for s in sections if s.source_type == "web")
@@ -251,15 +253,15 @@ def run_cleaning(
         "too_short_removed": stats.too_short_removed,
         "empty_removed": stats.empty_removed,
         "noise_lines_removed": stats.noise_lines_removed,
-        "retention_ratio": round(
-            stats.chunks_after_filters / stats.chunks_raw, 4
-        )
+        "retention_ratio": round(stats.chunks_after_filters / stats.chunks_raw, 4)
         if stats.chunks_raw
         else 0.0,
     }
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     return len(cleaned_docs), report
 

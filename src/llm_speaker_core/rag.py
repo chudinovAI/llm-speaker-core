@@ -90,7 +90,16 @@ INTENT_HINTS: dict[str, tuple[str, ...]] = {
     "contacts": ("контакт", "связ", "телефон", "почт", "email"),
     "location": ("где", "адрес", "корпус", "кампус", "наход"),
     "student_life": ("студен", "актив", "круж", "клуб", "театр", "спорт"),
-    "tuition": ("стоим", "стои", "оплат", "цена", "обучен", "платн", "договор", "контракт"),
+    "tuition": (
+        "стоим",
+        "стои",
+        "оплат",
+        "цена",
+        "обучен",
+        "платн",
+        "договор",
+        "контракт",
+    ),
 }
 INTENT_SOURCE_HINTS: dict[str, tuple[str, ...]] = {
     "admission": ("/priem", "/abitur", "комис", "admission"),
@@ -230,7 +239,9 @@ class LexicalRAG:
                 if p.exists():
                     self.indexes[name] = self._load_payload(p)
             if "general" not in self.indexes:
-                raise RuntimeError("multi-index manifest does not include general index")
+                raise RuntimeError(
+                    "multi-index manifest does not include general index"
+                )
         else:
             self.indexes = {"general": self._load_payload(self.index_path)}
 
@@ -323,7 +334,11 @@ class LexicalRAG:
             elif any(h in path for h in HIGH_SIGNAL_DOC_SOURCE_HINTS):
                 adjustment += 0.18
 
-        if bool(doc.get("is_archived", False)) and intents & {"tuition", "admission", "contacts"}:
+        if bool(doc.get("is_archived", False)) and intents & {
+            "tuition",
+            "admission",
+            "contacts",
+        }:
             adjustment -= 1.6
 
         return max(min(adjustment, 0.9), -3.5)
@@ -380,7 +395,9 @@ class LexicalRAG:
             intent_bonus = self._intent_source_bonus(doc, intents)
             penalty = self._generic_source_penalty(doc, intents)
             source_quality = self._source_quality_adjustment(doc, intents)
-            content_penalty = self._intent_content_penalty(text_tokens, q_unique, intents)
+            content_penalty = self._intent_content_penalty(
+                text_tokens, q_unique, intents
+            )
             score = (
                 score * (1.0 + 0.35 * coverage)
                 + source_bonus
@@ -393,7 +410,10 @@ class LexicalRAG:
         return scored_docs
 
     def _stage2_rerank(
-        self, query_tokens: set[str], intents: set[str], candidates: list[tuple[float, dict]]
+        self,
+        query_tokens: set[str],
+        intents: set[str],
+        candidates: list[tuple[float, dict]],
     ) -> list[tuple[float, dict]]:
         q_tokens = set(query_tokens)
         priority_tokens = self._priority_tokens_for_intents(intents)
@@ -407,7 +427,9 @@ class LexicalRAG:
 
             # Evidence-style boosts.
             q_overlap = len(q_tokens & doc_tokens)
-            priority_overlap = len(priority_tokens & doc_tokens) if priority_tokens else 0
+            priority_overlap = (
+                len(priority_tokens & doc_tokens) if priority_tokens else 0
+            )
             title_match = sum(1 for t in q_tokens if t in title)
             source_match = sum(1 for t in q_tokens if t in source)
 
@@ -444,7 +466,9 @@ class LexicalRAG:
         q_unique.update(self._priority_tokens_for_intents(intents))
         if intents:
             q_focus = {
-                t for t in q_unique if t not in GENERIC_BRAND_TOKENS and t not in QUESTION_TOKENS
+                t
+                for t in q_unique
+                if t not in GENERIC_BRAND_TOKENS and t not in QUESTION_TOKENS
             }
             if not q_focus:
                 q_focus = set(q_unique)
@@ -483,9 +507,10 @@ class LexicalRAG:
         merged.sort(key=lambda x: x[0], reverse=True)
         # Stage-2 rerank: lightweight cross-signal reranker over top candidates.
         rerank_pool = merged[: min(len(merged), max(top_k * 24, 48))]
-        merged = self._stage2_rerank(q_focus, intents, rerank_pool) + merged[
-            min(len(merged), max(top_k * 24, 48)) :
-        ]
+        merged = (
+            self._stage2_rerank(q_focus, intents, rerank_pool)
+            + merged[min(len(merged), max(top_k * 24, 48)) :]
+        )
 
         result: list[dict] = []
         seen_sources: set[str] = set()

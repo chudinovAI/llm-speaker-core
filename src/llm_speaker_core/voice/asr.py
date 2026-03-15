@@ -11,13 +11,14 @@ import argparse
 import queue
 import re
 import sys
-import time
-import threading
 import tempfile
+import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 import sounddevice as sd
@@ -35,18 +36,21 @@ except ImportError:
     class _FakeVad:
         def __init__(self, *a, **kw):
             pass
+
         def set_mode(self, *a):
             pass
+
         def is_speech(self, *a, **kw):
             return False
 
-    _mock.Vad = _FakeVad
+    _mock.Vad = _FakeVad  # type: ignore[attr-defined]
     sys.modules["webrtcvad"] = _mock
 
 import gigaam
 import gigaam.preprocess as _giga_preprocess
 import gigaam.model as _giga_model
 from resemblyzer import VoiceEncoder
+
 
 def _load_audio_no_ffmpeg(path: str) -> torch.Tensor:
     audio, sr = sf.read(path, dtype="float32")
@@ -59,8 +63,9 @@ def _load_audio_no_ffmpeg(path: str) -> torch.Tensor:
         audio = np.interp(indices, np.arange(len(audio)), audio).astype(np.float32)
     return torch.from_numpy(audio)
 
+
 _giga_preprocess.load_audio = _load_audio_no_ffmpeg
-_giga_model.load_audio = _load_audio_no_ffmpeg     # ← ключевое: патчим и в model
+_giga_model.load_audio = _load_audio_no_ffmpeg  # ← ключевое: патчим и в model
 
 
 # ==========================================================================
@@ -70,19 +75,19 @@ _giga_model.load_audio = _load_audio_no_ffmpeg     # ← ключевое: па�
 # - Аудио -
 SAMPLE_RATE = 16000
 CHUNK_MS = 32
-CHUNK_SAMPLES = 512   # Silero VAD требует ровно 512 при 16kHz
+CHUNK_SAMPLES = 512  # Silero VAD требует ровно 512 при 16kHz
 
 # - VAD пороги -
 VAD_THRESHOLD = 0.5
 VAD_NEG_THRESHOLD = 0.35
 SILENCE_TIMEOUT_MS = 700
 MIN_SPEECH_MS = 250
-MAX_SPEECH_S = 25       # ← ограничение GigaAM transcribe (25с)
+MAX_SPEECH_S = 25  # ← ограничение GigaAM transcribe (25с)
 PRE_BUFFER_CHUNKS = 16
 
 # - Стриминг -
-PARTIAL_INTERVAL_S = 0.6     # частичный результат каждые 600мс
-MIN_PARTIAL_AUDIO_S = 0.5    # минимальная длина для partial-инференса
+PARTIAL_INTERVAL_S = 0.6  # частичный результат каждые 600мс
+MIN_PARTIAL_AUDIO_S = 0.5  # минимальная длина для partial-инференса
 
 # - Wake Word -
 DEFAULT_WAKE_WORD = "привет коробка"
@@ -116,6 +121,7 @@ MAX_REPEAT_RATIO = 0.6
 #  ОБЩИЕ УТИЛИТЫ
 # ==========================================================================
 
+
 def fuzzy_match(word_a: str, word_b: str) -> bool:
     """Нечеткое сравнение двух слов. Единая функция для wake/stop."""
     if word_a == word_b:
@@ -133,6 +139,7 @@ def fuzzy_match(word_a: str, word_b: str) -> bool:
 # ==========================================================================
 #  ВЫХОД ДЛЯ LLM (JSONL)
 # ==========================================================================
+
 
 class ASROutput:
     """
@@ -154,7 +161,9 @@ class ASROutput:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self._file = open(self.path, "a", encoding="utf-8", buffering=1)  # line-buffered
+        self._file = open(
+            self.path, "a", encoding="utf-8", buffering=1
+        )  # line-buffered
         print(f"[OUTPUT] → {self.path.resolve()}")
 
     def write(self, text: str):
@@ -169,6 +178,7 @@ class ASROutput:
 #  СТРУКТУРЫ ДАННЫХ
 # ==========================================================================
 
+
 class TaskType(Enum):
     PARTIAL = auto()
     FINAL = auto()
@@ -177,14 +187,16 @@ class TaskType(Enum):
 @dataclass
 class ASRTask:
     """Задание для ASR-воркера"""
+
     task_type: TaskType
     audio: np.ndarray
-    generation: int          # счётчик сегментов, для отброса устаревших partial
+    generation: int  # счётчик сегментов, для отброса устаревших partial
 
 
 @dataclass
 class TranscriptionResult:
     """Результат ASR"""
+
     text: str
     is_valid: bool
     reject_reason: str | None = None
@@ -195,6 +207,7 @@ class TranscriptionResult:
 @dataclass
 class SessionState:
     """Состояние голосовой сессии."""
+
     active: bool = False
     speaker_embedding: np.ndarray | None = None
     started_at: float = 0.0
@@ -210,6 +223,7 @@ class SessionState:
 # ==========================================================================
 #  ASR ФИЛЬТР (упрощённый для CTC)
 # ==========================================================================
+
 
 class ASRFilter:
     HALLUCINATION_PATTERNS: list[str] = [
@@ -254,6 +268,7 @@ class ASRFilter:
 #  SILERO VAD
 # ==========================================================================
 
+
 class SileroVAD:
     def __init__(self, threshold: float = VAD_THRESHOLD):
         self.threshold = threshold
@@ -278,6 +293,7 @@ class SileroVAD:
 # ==========================================================================
 #  SPEAKER VERIFIER
 # ==========================================================================
+
 
 class SpeakerVerifier:
     """Верификация говорящего через resemblyzer (GE2E, ~17MB, CPU)."""
@@ -311,6 +327,7 @@ class SpeakerVerifier:
 #  WAKE WORD DETECTOR
 # ==========================================================================
 
+
 class WakeWordDetector:
     """Нечёткий детектор wake word по тексту."""
 
@@ -318,8 +335,10 @@ class WakeWordDetector:
         self.wake_word = wake_word.lower().strip()
         self.wake_words = self.wake_word.split()
         self.min_matches = max(1, int(len(self.wake_words) * WAKE_WORD_MIN_MATCH_RATIO))
-        print(f"[WAKE] Wake word: \"{self.wake_word}\" "
-              f"(нужно совпадений: {self.min_matches}/{len(self.wake_words)})")
+        print(
+            f'[WAKE] Wake word: "{self.wake_word}" '
+            f"(нужно совпадений: {self.min_matches}/{len(self.wake_words)})"
+        )
 
     def check(self, text: str) -> tuple[bool, str]:
         """Возвращает (detected, remaining_text)."""
@@ -340,7 +359,7 @@ class WakeWordDetector:
         remaining = ""
         if detected and matched_indices:
             last_idx = max(matched_indices)
-            remaining = " ".join(text_words[last_idx + 1:]).strip()
+            remaining = " ".join(text_words[last_idx + 1 :]).strip()
             remaining = re.sub(r"^[.,!?\s]+", "", remaining)
 
         return detected, remaining
@@ -349,6 +368,7 @@ class WakeWordDetector:
 # ==========================================================================
 #  STOP WORD DETECTOR
 # ==========================================================================
+
 
 class StopWordDetector:
     """Детектор стоп-слов. Считается стопом только короткая фраза."""
@@ -368,8 +388,7 @@ class StopWordDetector:
         for sw in self.stop_words:
             sw_words = sw.split()
             if all(
-                any(fuzzy_match(sw_w, tw) for tw in text_words)
-                for sw_w in sw_words
+                any(fuzzy_match(sw_w, tw) for tw in text_words) for sw_w in sw_words
             ):
                 return True, sw
 
@@ -380,14 +399,14 @@ class StopWordDetector:
 #  GigaAM ASR ENGINE
 # ==========================================================================
 
-class GigaAMEngine:
 
+class GigaAMEngine:
     def __init__(self, model_name: str = "v3_e2e_ctc"):
         print(f"[ASR] Загрузка модели GigaAM '{model_name}'...")
         self.model = gigaam.load_model(model_name)
         self._tmp_dir = Path(tempfile.mkdtemp(prefix="asr_"))
         self._tmp_path = self._tmp_dir / "buffer.wav"
-        print(f"[ASR] Модель загружена.")
+        print("[ASR] Модель загружена.")
 
     def transcribe(self, audio: np.ndarray) -> TranscriptionResult:
         """Транскрибирует numpy-массив (float32, 16kHz, mono)."""
@@ -421,8 +440,8 @@ class GigaAMEngine:
 #  МИКРОФОН
 # ==========================================================================
 
-class MicrophoneStream:
 
+class MicrophoneStream:
     def __init__(self, device_index: int | None = None, max_queue: int = 200):
         self.device_index = device_index
         self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=max_queue)
@@ -451,14 +470,18 @@ class MicrophoneStream:
             channels=1,
             device=self.device_index,
             callback=self._callback,
-            latency="high",               # больший буфер PortAudio
+            latency="high",  # больший буфер PortAudio
         )
         self.stream.start()
-        actual_latency_ms = self.stream.latency * 1000  # latency возвращается в секундах
-        print(f"[MIC] Стрим запущен "
-              f"(device={self.device_index or 'default'}, "
-              f"blocksize={CHUNK_SAMPLES}, "
-              f"latency={actual_latency_ms:.0f}мс)")
+        actual_latency_ms = (
+            self.stream.latency * 1000
+        )  # latency возвращается в секундах
+        print(
+            f"[MIC] Стрим запущен "
+            f"(device={self.device_index or 'default'}, "
+            f"blocksize={CHUNK_SAMPLES}, "
+            f"latency={actual_latency_ms:.0f}мс)"
+        )
 
     def get_chunk(self, timeout: float = 0.5) -> np.ndarray | None:
         try:
@@ -479,6 +502,7 @@ class MicrophoneStream:
 # ==========================================================================
 #  ОСНОВНОЙ ПАЙПЛАЙН
 # ==========================================================================
+
 
 class ASRPipeline:
     """
@@ -539,7 +563,7 @@ class ASRPipeline:
         # - Стриминг -
         self._last_partial_time: float = 0.0
         self._last_partial_text: str = ""
-        self._segment_generation: int = 0      # для отбрасывания устаревших partial
+        self._segment_generation: int = 0  # для отбрасывания устаревших partial
         self._wake_detected_this_segment: bool = False
 
         # - Потоки -
@@ -550,7 +574,7 @@ class ASRPipeline:
         self._mic_muted = threading.Event()
 
         # - Callback -
-        self.on_transcription: callable | None = None
+        self.on_transcription: Callable[[str], Any] | None = None
 
     # - Управление мьютом (для TTS) -
 
@@ -713,7 +737,9 @@ class ASRPipeline:
                         self._last_partial_text = remaining
                 else:
                     # Показываем что слышим (ожидание wake word)
-                    sys.stdout.write(f"\r  [WAKE] \"{text}\" ({result.inference_time:.2f}с)   ")
+                    sys.stdout.write(
+                        f'\r  [WAKE] "{text}" ({result.inference_time:.2f}с)   '
+                    )
                     sys.stdout.flush()
         else:
             # В активной сессии — показываем live-текст
@@ -745,7 +771,9 @@ class ASRPipeline:
         else:
             self._handle_final_active(result, audio, now)
 
-    def _handle_final_waiting(self, result: TranscriptionResult, audio: np.ndarray, now: float):
+    def _handle_final_waiting(
+        self, result: TranscriptionResult, audio: np.ndarray, now: float
+    ):
         """Обработка финального результата в режиме ожидания wake word."""
         if not result.text.strip():
             return
@@ -753,9 +781,15 @@ class ASRPipeline:
         detected, remaining = self.wake_detector.check(result.text)
 
         if not detected:
-            rtf = result.inference_time / result.audio_duration if result.audio_duration > 0 else 0
-            print(f"  [WAKE] \"{result.text}\" "
-                  f"({result.inference_time:.2f}с, RTF: {rtf:.2f}x)")
+            rtf = (
+                result.inference_time / result.audio_duration
+                if result.audio_duration > 0
+                else 0
+            )
+            print(
+                f'  [WAKE] "{result.text}" '
+                f"({result.inference_time:.2f}с, RTF: {rtf:.2f}x)"
+            )
             return
 
         # Wake word обнаружен!
@@ -763,12 +797,14 @@ class ASRPipeline:
 
         # Если есть команда после wake word — обрабатываем
         if remaining:
-            print(f"  [SESSION] Команда: \"{remaining}\"")
+            print(f'  [SESSION] Команда: "{remaining}"')
             self.output.write(remaining)
             if self.on_transcription:
                 self.on_transcription(remaining)
 
-    def _handle_final_active(self, result: TranscriptionResult, audio: np.ndarray, now: float):
+    def _handle_final_active(
+        self, result: TranscriptionResult, audio: np.ndarray, now: float
+    ):
         """Обработка финального результата в активной сессии."""
         with self._session_lock:
             self.session.last_speech_at = now
@@ -777,7 +813,7 @@ class ASRPipeline:
             return
 
         if not result.is_valid:
-            print(f"  [FILTER] X \"{result.text}\" → {result.reject_reason}")
+            print(f'  [FILTER] X "{result.text}" → {result.reject_reason}')
             return
 
         # - Speaker verification (только при первом подозрении) -
@@ -792,7 +828,11 @@ class ASRPipeline:
                 else:
                     print(f"  [SPEAKER] ~ Неуверенно (sim={similarity:.2f})")
 
-        rtf = result.inference_time / result.audio_duration if result.audio_duration > 0 else 0
+        rtf = (
+            result.inference_time / result.audio_duration
+            if result.audio_duration > 0
+            else 0
+        )
 
         # - Стоп-слово -
         is_stop, stop_word = self.stop_detector.check(result.text)
@@ -800,11 +840,11 @@ class ASRPipeline:
             with self._session_lock:
                 self.session.reset()
             print()
-            print(f"  ┌──────────────────────────────────────────────────")
-            print(f"  │ Стоп-слово: \"{result.text}\" (→ \"{stop_word}\")")
-            print(f"  │ Сессия завершена")
-            print(f"  │ Жду wake word...")
-            print(f"  └──────────────────────────────────────────────────")
+            print("  ┌──────────────────────────────────────────────────")
+            print(f'  │ Стоп-слово: "{result.text}" (→ "{stop_word}")')
+            print("  │ Сессия завершена")
+            print("  │ Жду wake word...")
+            print("  └──────────────────────────────────────────────────")
             print()
             return
 
@@ -816,7 +856,7 @@ class ASRPipeline:
                 with self._session_lock:
                     self.session.speaker_embedding = new_emb
                     self.session.last_speech_at = now
-                print(f"  [SESSION] Отпечаток обновлён")
+                print("  [SESSION] Отпечаток обновлён")
             if remaining:
                 result.text = remaining
             else:
@@ -825,11 +865,13 @@ class ASRPipeline:
         # ── Вывод финального результата ──
         if result.text.strip():
             print()
-            print(f"  ╔══════════════════════════════════════════════════")
+            print("  ╔══════════════════════════════════════════════════")
             print(f"  ║ {result.text}")
-            print(f"  ║ {result.inference_time:.2f}с "
-                  f"(RTF: {rtf:.2f}x, аудио: {result.audio_duration:.1f}с)")
-            print(f"  ╚══════════════════════════════════════════════════")
+            print(
+                f"  ║ {result.inference_time:.2f}с "
+                f"(RTF: {rtf:.2f}x, аудио: {result.audio_duration:.1f}с)"
+            )
+            print("  ╚══════════════════════════════════════════════════")
             print()
 
             if self.on_transcription:
@@ -854,13 +896,13 @@ class ASRPipeline:
             self.session.last_speech_at = now
 
         print()
-        print(f"  ┌──────────────────────────────────────────────────")
-        print(f"  │ Wake word обнаружен!")
+        print("  ┌──────────────────────────────────────────────────")
+        print("  │ Wake word обнаружен!")
         if speaker_embedding is not None:
-            print(f"  │ Голосовой отпечаток захвачен")
+            print("  │ Голосовой отпечаток захвачен")
         print(f"  │ Сессия активна (таймаут: {SESSION_TIMEOUT_S}с)")
         print(f"  │ Стоп-слова: {', '.join(self.stop_detector.stop_words[:3])}...")
-        print(f"  └──────────────────────────────────────────────────")
+        print("  └──────────────────────────────────────────────────")
         print()
 
     # - Таймаут сессии -
@@ -885,10 +927,10 @@ class ASRPipeline:
 
         if reason:
             print()
-            print(f"  ┌──────────────────────────────────────────────────")
+            print("  ┌──────────────────────────────────────────────────")
             print(f"  │ Сессия завершена ({reason})")
-            print(f"  │ Жду wake word...")
-            print(f"  └──────────────────────────────────────────────────")
+            print("  │ Жду wake word...")
+            print("  └──────────────────────────────────────────────────")
             print()
 
     # - Основной цикл -
@@ -899,16 +941,16 @@ class ASRPipeline:
         sv_status = "ON" if self.speaker_verify else "OFF"
         print()
         print("=" * 58)
-        print(f"  University Terminal ASR")
-        print(f"  Модель: GigaAM-v3 CTC (streaming)")
-        print(f"  Wake word: \"{self.wake_detector.wake_word}\"")
+        print("  University Terminal ASR")
+        print("  Модель: GigaAM-v3 CTC (streaming)")
+        print(f'  Wake word: "{self.wake_detector.wake_word}"')
         print(f"  Stop words: {', '.join(self.stop_detector.stop_words[:4])}...")
         print(f"  Speaker verification: {sv_status}")
         print(f"  Live ASR: partial каждые {PARTIAL_INTERVAL_S}с")
-        print(f"  Ctrl+C для остановки")
+        print("  Ctrl+C для остановки")
         print("=" * 58)
         print()
-        print(f"  Жду wake word...\n")
+        print("  Жду wake word...\n")
 
         self._running = True
 
@@ -952,14 +994,17 @@ class ASRPipeline:
 #  CLI
 # ==========================================================================
 
+
 def list_audio_devices():
     print("\nДоступные аудио-устройства:\n")
     devices = sd.query_devices()
     for i, d in enumerate(devices):
         if d["max_input_channels"] > 0:
             marker = " ◀ default" if i == sd.default.device[0] else ""
-            print(f"  [{i}] {d['name']} ({d['max_input_channels']}ch, "
-                  f"{int(d['default_samplerate'])}Hz){marker}")
+            print(
+                f"  [{i}] {d['name']} ({d['max_input_channels']}ch, "
+                f"{int(d['default_samplerate'])}Hz){marker}"
+            )
     print()
 
 
@@ -967,20 +1012,36 @@ def main():
     parser = argparse.ArgumentParser(
         description="University Terminal ASR v2: GigaAM Streaming Pipeline"
     )
-    parser.add_argument("--list-devices", action="store_true",
-                        help="Показать список аудиоустройств")
-    parser.add_argument("--device", type=int, default=None,
-                        help="Индекс микрофона (см. --list-devices)")
-    parser.add_argument("--model", type=str, default="v3_e2e_ctc",
-                        help="Модель GigaAM (default: v3_e2e_ctc)")
-    parser.add_argument("--wake-word", type=str, default=DEFAULT_WAKE_WORD,
-                        help=f"Wake word (default: \"{DEFAULT_WAKE_WORD}\")")
-    parser.add_argument("--stop-words", type=str, default=None,
-                        help="Стоп-слова через запятую")
-    parser.add_argument("--no-speaker-verify", action="store_true",
-                        help="Отключить верификацию голоса")
-    parser.add_argument("--output", type=str, default="runtime/asr_output.txt",
-                        help="Путь к файлу для LLM (default: runtime/asr_output.txt)")
+    parser.add_argument(
+        "--list-devices", action="store_true", help="Показать список аудиоустройств"
+    )
+    parser.add_argument(
+        "--device", type=int, default=None, help="Индекс микрофона (см. --list-devices)"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="v3_e2e_ctc",
+        help="Модель GigaAM (default: v3_e2e_ctc)",
+    )
+    parser.add_argument(
+        "--wake-word",
+        type=str,
+        default=DEFAULT_WAKE_WORD,
+        help=f'Wake word (default: "{DEFAULT_WAKE_WORD}")',
+    )
+    parser.add_argument(
+        "--stop-words", type=str, default=None, help="Стоп-слова через запятую"
+    )
+    parser.add_argument(
+        "--no-speaker-verify", action="store_true", help="Отключить верификацию голоса"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="runtime/asr_output.txt",
+        help="Путь к файлу для LLM (default: runtime/asr_output.txt)",
+    )
 
     args = parser.parse_args()
 

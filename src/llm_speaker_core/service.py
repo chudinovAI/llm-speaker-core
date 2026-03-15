@@ -5,8 +5,8 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Protocol
 
-from llm_speaker_core.llm import OllamaClient
 from llm_speaker_core.rag import LexicalRAG, expand_query, tokenize
 from llm_speaker_core.settings import SETTINGS
 
@@ -47,7 +47,15 @@ class IntentRule:
 
 INTENT_RULES: dict[str, IntentRule] = {
     "tuition": IntentRule(
-        fact_tokens={"стоимость", "цена", "оплата", "договор", "руб", "обучение", "платное"},
+        fact_tokens={
+            "стоимость",
+            "цена",
+            "оплата",
+            "договор",
+            "руб",
+            "обучение",
+            "платное",
+        },
         trusted_source_hints=(
             "/eif/pay",
             "/eif/inf_dog",
@@ -135,6 +143,12 @@ class GenerationResult:
     latency_ms: int
 
 
+class LLMProtocol(Protocol):
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str: ...
+
+
 class SessionMemory:
     def __init__(self, max_turns: int = 5) -> None:
         self.max_turns = max_turns
@@ -174,7 +188,7 @@ class Metrics:
 
 class LLMService:
     def __init__(
-        self, rag: LexicalRAG, llm: OllamaClient, speaker_mode: str | None = None
+        self, rag: LexicalRAG, llm: LLMProtocol, speaker_mode: str | None = None
     ) -> None:
         self.rag = rag
         self.llm = llm
@@ -216,7 +230,9 @@ class LLMService:
 
     def _to_plain_text(self, text: str) -> str:
         text = re.sub(r"[*_`#>-]", "", text)
-        text = re.sub(r"\bСанкт[\s-]?Петербург", "Санкт-Петербург", text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"\bСанкт[\s-]?Петербург", "Санкт-Петербург", text, flags=re.IGNORECASE
+        )
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
@@ -313,7 +329,9 @@ class LLMService:
             return text, False
         return " ".join(words[:max_words]).strip(), True
 
-    def _compose_user_prompt(self, session_id: str, text: str, rag_chunks: list[dict]) -> str:
+    def _compose_user_prompt(
+        self, session_id: str, text: str, rag_chunks: list[dict]
+    ) -> str:
         history = self.memory.get(session_id)
         history_str = "\n".join(
             f"{item['role']}: {item['content']}" for item in history[-6:]
@@ -358,7 +376,9 @@ class LLMService:
     def _estimate_evidence_coverage(self, text: str, rag_chunks: list[dict]) -> float:
         intent = self._primary_intent(text)
         query_tokens = set(expand_query(tokenize(text)))
-        fact_tokens = self._intent_rule(intent).fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
+        fact_tokens = self._intent_rule(
+            intent
+        ).fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
         if fact_tokens:
             prioritized = {t for t in query_tokens if t in fact_tokens}
             if prioritized:
@@ -371,7 +391,9 @@ class LLMService:
         coverage = len(query_tokens & ctx_tokens) / max(len(query_tokens), 1)
         return round(coverage, 4)
 
-    def _verify_grounding(self, answer: str, rag_chunks: list[dict]) -> tuple[str, bool]:
+    def _verify_grounding(
+        self, answer: str, rag_chunks: list[dict]
+    ) -> tuple[str, bool]:
         """Drop unsupported claims to reduce hallucinations for broad questions."""
         ctx_tokens: set[str] = set()
         for chunk in rag_chunks:
@@ -384,7 +406,9 @@ class LLMService:
         kept: list[str] = []
         changed = False
         for sent in sentences:
-            if re.fullmatch(r"\s*[\d]+[.)]?\s*", sent) or re.fullmatch(r"\s*[-*•]+\s*", sent):
+            if re.fullmatch(r"\s*[\d]+[.)]?\s*", sent) or re.fullmatch(
+                r"\s*[-*•]+\s*", sent
+            ):
                 changed = True
                 continue
             sent_tokens = set(tokenize(sent))
@@ -399,7 +423,10 @@ class LLMService:
                 changed = True
 
         if not kept:
-            return "В доступном фрагменте контекста нет точных подтвержденных данных.", True
+            return (
+                "В доступном фрагменте контекста нет точных подтвержденных данных.",
+                True,
+            )
         return " ".join(kept).strip(), changed
 
     def _is_low_info_display(self, text: str) -> bool:
@@ -455,7 +482,11 @@ class LLMService:
                     marker in sent_low for marker in rule.noisy_sentence_markers
                 ):
                     continue
-                if len(sent.split()) > 32 and fact_tokens and not (set(tokenize(sent)) & fact_tokens):
+                if (
+                    len(sent.split()) > 32
+                    and fact_tokens
+                    and not (set(tokenize(sent)) & fact_tokens)
+                ):
                     continue
 
                 sent_tokens = set(tokenize(sent))
@@ -544,7 +575,9 @@ class LLMService:
         if rule.fact_tokens:
             display_tokens = set(tokenize(display_text))
             fact_token_hits = len(display_tokens & rule.fact_tokens)
-        has_specific_number = bool(re.search(r"\b\d[\d\s]{2,}\s*(руб|₽|год|г\.)\b", low))
+        has_specific_number = bool(
+            re.search(r"\b\d[\d\s]{2,}\s*(руб|₽|год|г\.)\b", low)
+        )
         if has_specific_number and intent in {"tuition", "admission"}:
             return display_text
 
@@ -554,7 +587,10 @@ class LLMService:
         menu_like = (
             len(tokens) > 20
             and punctuation <= 1
-            and any(k in low for k in ("положение", "формы договоров", "комиссия", "структура"))
+            and any(
+                k in low
+                for k in ("положение", "формы договоров", "комиссия", "структура")
+            )
         )
         quality_gate_failed = (
             evidence_coverage < rule.min_evidence_for_freeform
@@ -582,7 +618,9 @@ class LLMService:
             return rule.display_summary
         return display_text
 
-    def _filter_rag_chunks_by_intent(self, intent: str, rag_chunks: list[dict]) -> list[dict]:
+    def _filter_rag_chunks_by_intent(
+        self, intent: str, rag_chunks: list[dict]
+    ) -> list[dict]:
         rule = self._intent_rule(intent)
         if not rule.allowed_source_hints and not rule.denied_source_hints:
             return rag_chunks
@@ -590,9 +628,13 @@ class LLMService:
         filtered: list[dict] = []
         for chunk in rag_chunks:
             source = str(chunk.get("source", "")).lower()
-            if rule.denied_source_hints and self._matches_any_hint(source, rule.denied_source_hints):
+            if rule.denied_source_hints and self._matches_any_hint(
+                source, rule.denied_source_hints
+            ):
                 continue
-            if rule.allowed_source_hints and not self._matches_any_hint(source, rule.allowed_source_hints):
+            if rule.allowed_source_hints and not self._matches_any_hint(
+                source, rule.allowed_source_hints
+            ):
                 continue
             filtered.append(chunk)
         return filtered or rag_chunks
@@ -610,7 +652,7 @@ class LLMService:
         }
 
         best_sentence = sentences[0]
-        best_score = -10**9
+        best_score = float(-(10**9))
         for sentence in sentences:
             sent_tokens = {
                 token.lower()
@@ -647,7 +689,9 @@ class LLMService:
             return rag_chunks
 
         fallback_query = f"{text} {' '.join(rule.query_boost_terms)}"
-        extra_chunks = self.rag.search(fallback_query, top_k=max(SETTINGS.rag_top_k + 2, 5))
+        extra_chunks = self.rag.search(
+            fallback_query, top_k=max(SETTINGS.rag_top_k + 2, 5)
+        )
         for chunk in extra_chunks:
             source = str(chunk.get("source", "")).lower()
             if rule.trusted_source_hints and not self._matches_any_hint(
@@ -664,7 +708,9 @@ class LLMService:
             break
         return rag_chunks
 
-    def handle_query(self, text: str, session_id: str, history: list | None = None) -> GenerationResult:
+    def handle_query(
+        self, text: str, session_id: str, history: list | None = None
+    ) -> GenerationResult:
         started = time.perf_counter()
         fallback_used = False
         limits_applied = False
@@ -691,11 +737,15 @@ class LLMService:
         display_text = self._dedupe_sentences(display_text)
         display_text, policy_removed = self._remove_policy_artifacts(display_text)
         limits_applied = limits_applied or policy_removed
-        display_text, grounding_changed = self._verify_grounding(display_text, rag_chunks)
+        display_text, grounding_changed = self._verify_grounding(
+            display_text, rag_chunks
+        )
         limits_applied = limits_applied or grounding_changed
         display_text, changed_identity = self._enforce_university_identity(display_text)
         limits_applied = limits_applied or changed_identity
-        display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
+        display_text, limited = self._limit_words(
+            display_text, SETTINGS.max_display_words
+        )
         limits_applied = limits_applied or limited
         display_text, tail_fixed = self._finalize_display_tail(display_text)
         limits_applied = limits_applied or tail_fixed
@@ -731,7 +781,9 @@ class LLMService:
             rag_sources=rag_sources,
             evidence_coverage=evidence_coverage,
         )
-        display_text, limited = self._limit_words(display_text, SETTINGS.max_display_words)
+        display_text, limited = self._limit_words(
+            display_text, SETTINGS.max_display_words
+        )
         limits_applied = limits_applied or limited
         display_text, tail_fixed = self._finalize_display_tail(display_text)
         limits_applied = limits_applied or tail_fixed
@@ -783,7 +835,9 @@ class LLMService:
         if "нет точных подтвержденных данных" in display_text.lower():
             answer_mode = "uncertain"
 
-        self.memory.add_turn(session_id=session_id, user_text=text, assistant_text=display_text)
+        self.memory.add_turn(
+            session_id=session_id, user_text=text, assistant_text=display_text
+        )
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
 
@@ -807,6 +861,5 @@ class LLMService:
             answer_mode=answer_mode,
             latency_ms=elapsed_ms,
         )
-    _GUAP_CANONICAL = (
-        "ГУАП — Санкт-Петербургский государственный университет аэрокосмического приборостроения."
-    )
+
+    _GUAP_CANONICAL = "ГУАП — Санкт-Петербургский государственный университет аэрокосмического приборостроения."
