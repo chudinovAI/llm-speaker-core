@@ -4,11 +4,17 @@ import argparse
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
-from llm_speaker_core.api import build_service
+from llm_speaker_core.app.bootstrap import build_service
+from llm_speaker_core.voice.events import (
+    CompositeVoiceEventSink,
+    JsonlVoiceEventSink,
+    VoiceEvent,
+    VoiceEventSink,
+)
 from llm_speaker_core.voice.tts import (
     DEFAULT_SAMPLE_RATE,
     DEFAULT_SPEAKER,
@@ -64,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("runtime/speaker_output.txt"),
         help="Optional text output for speaker_text stream.",
+    )
+    parser.add_argument(
+        "--events-out",
+        type=Path,
+        default=Path("runtime/voice_events.jsonl"),
+        help="Output JSONL path for internal voice events.",
     )
     parser.add_argument(
         "--poll-interval",
@@ -179,10 +191,24 @@ def _write_speaker_output(path: Path | None, text: str) -> None:
         f.write(text.strip() + "\n")
 
 
-def run_bridge(args: argparse.Namespace) -> None:
+def _emit(
+    sink: VoiceEventSink | None,
+    callback: Callable[[VoiceEvent], None] | None,
+    event: VoiceEvent,
+) -> None:
+    if sink is not None:
+        sink.emit(event)
+    if callback is not None:
+        callback(event)
+
+
+def run_bridge(
+    args: argparse.Namespace, on_event: Callable[[VoiceEvent], None] | None = None
+) -> None:
     args.input.parent.mkdir(parents=True, exist_ok=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.input.touch(exist_ok=True)
+    args.events_out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"[ASR->LLM] input={args.input.resolve()}")
     print(f"[ASR->LLM] out={args.out.resolve()}")
@@ -194,6 +220,7 @@ def run_bridge(args: argparse.Namespace) -> None:
     tts = _build_tts(args)
     service = build_service() if args.mode == "direct" else None
     tts_counter = 0
+    event_sink = CompositeVoiceEventSink(JsonlVoiceEventSink(args.events_out))
 
     with (
         args.input.open("r", encoding="utf-8") as in_f,
@@ -214,6 +241,11 @@ def run_bridge(args: argparse.Namespace) -> None:
                 continue
 
             ts = time.time()
+            _emit(
+                event_sink,
+                on_event,
+                VoiceEvent(kind="transcript_final", session_id=args.session_id, text=text),
+            )
             try:
                 if args.mode == "direct":
                     result = _direct_query(service, text, args.session_id)
@@ -234,21 +266,72 @@ def run_bridge(args: argparse.Namespace) -> None:
                 print(f'[ASR->LLM] Q: "{text}"')
                 print(f"[ASR->LLM] D: {display}")
                 print(f"[ASR->LLM] S: {speaker}")
+                _emit(
+                    event_sink,
+                    on_event,
+                    VoiceEvent(
+                        kind="display_ready",
+                        session_id=args.session_id,
+                        text=record["display_text"],
+                        meta=record["meta"],
+                    ),
+                )
+                if record["speaker_text"]:
+                    _emit(
+                        event_sink,
+                        on_event,
+                        VoiceEvent(
+                            kind="speaker_ready",
+                            session_id=args.session_id,
+                            text=record["speaker_text"],
+                            meta=record["meta"],
+                        ),
+                    )
 
                 _write_speaker_output(args.speaker_output, record["speaker_text"])
 
                 if tts is not None and record["speaker_text"]:
                     tts_counter += 1
                     wav_path = args.tts_output_dir / f"tts_{tts_counter:04d}.wav"
+                    _emit(
+                        event_sink,
+                        on_event,
+                        VoiceEvent(
+                            kind="tts_started",
+                            session_id=args.session_id,
+                            text=record["speaker_text"],
+                            meta={"wav_path": str(wav_path)},
+                        ),
+                    )
                     tts.speak(
                         record["speaker_text"],
                         output_path=str(wav_path),
                         play_audio=args.tts_play,
                     )
+                    _emit(
+                        event_sink,
+                        on_event,
+                        VoiceEvent(
+                            kind="tts_finished",
+                            session_id=args.session_id,
+                            text=record["speaker_text"],
+                            meta={"wav_path": str(wav_path)},
+                        ),
+                    )
             except Exception as exc:  # noqa: BLE001
                 err = {"ts": ts, "input_text": text, "error": str(exc)}
                 out_f.write(json.dumps(err, ensure_ascii=False) + "\n")
                 print(f'[ASR->LLM] ERROR for "{text}": {exc}')
+                _emit(
+                    event_sink,
+                    on_event,
+                    VoiceEvent(
+                        kind="error",
+                        session_id=args.session_id,
+                        text=text,
+                        meta={"error": str(exc)},
+                    ),
+                )
 
 
 def main() -> None:

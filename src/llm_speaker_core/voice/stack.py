@@ -7,6 +7,8 @@ from pathlib import Path
 
 from llm_speaker_core.voice import asr as asr_module
 from llm_speaker_core.voice.bridge import run_bridge
+from llm_speaker_core.voice.events import VoiceEvent
+from llm_speaker_core.voice.session import VoiceRuntimePaths, VoiceSessionController
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,10 +65,14 @@ def main() -> None:
 
     runtime_dir = args.runtime_dir
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    asr_output = runtime_dir / "asr_output.txt"
-    llm_output = runtime_dir / "asr_llm_output.jsonl"
-    speaker_output = runtime_dir / "speaker_output.txt"
-    tts_dir = runtime_dir / "tts"
+    paths = VoiceRuntimePaths.from_runtime_dir(runtime_dir)
+    session = VoiceSessionController()
+
+    def handle_event(event: VoiceEvent) -> None:
+        prev = session.state
+        session.on_event(event)
+        if session.state != prev:
+            print(f"[VOICE] state: {prev.value} -> {session.state.value} ({event.kind})")
 
     asr_cmd = [
         sys.executable,
@@ -77,7 +83,7 @@ def main() -> None:
         "--wake-word",
         args.wake_word,
         "--output",
-        str(asr_output),
+        str(paths.asr_output),
     ]
     if args.asr_device is not None:
         asr_cmd.extend(["--device", str(args.asr_device)])
@@ -91,17 +97,18 @@ def main() -> None:
 
     asr_process = subprocess.Popen(asr_cmd)
     bridge_args = argparse.Namespace(
-        input=asr_output,
+        input=paths.asr_output,
         mode=args.mode,
         api_url=args.api_url,
         session_id=args.session_id,
-        out=llm_output,
-        speaker_output=speaker_output,
+        out=paths.llm_output,
+        speaker_output=paths.speaker_output,
+        events_out=paths.events_output,
         poll_interval=0.15,
         timeout_s=35.0,
         from_start=False,
         tts_enabled=True,
-        tts_output_dir=tts_dir,
+        tts_output_dir=paths.tts_dir,
         tts_play=args.tts_play,
         tts_speaker=args.tts_speaker,
         tts_sample_rate=args.tts_sample_rate,
@@ -110,7 +117,8 @@ def main() -> None:
     )
 
     try:
-        run_bridge(bridge_args)
+        handle_event(VoiceEvent(kind="session_started", session_id=args.session_id))
+        run_bridge(bridge_args, on_event=handle_event)
     except KeyboardInterrupt:
         print("\n[VOICE] stopping stack...")
     finally:
