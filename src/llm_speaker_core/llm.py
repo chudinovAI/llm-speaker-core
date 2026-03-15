@@ -12,7 +12,9 @@ class OllamaClient:
     model: str
     timeout_s: float
 
-    def generate(self, system_prompt: str, user_prompt: str, max_tokens: int = 180) -> str:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
         payload = {
             "model": self.model,
             "messages": [
@@ -41,5 +43,7 @@ class OllamaClient:
         message = data.get("message", {})
         content = message.get("content", "")
         if not isinstance(content, str):
-            raise ValueError(f"Invalid ollama response: {json.dumps(data, ensure_ascii=False)}")
+            raise ValueError(
+                f"Invalid ollama response: {json.dumps(data, ensure_ascii=False)}"
+            )
         return content.strip()

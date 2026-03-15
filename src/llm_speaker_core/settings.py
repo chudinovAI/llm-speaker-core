@@ -19,7 +19,9 @@ class AppSettings:
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3.5:2b"
     llm_timeout_s: float = 30.0
-    fallback_text: str = "Извините, не получилось сформировать ответ. Повторите вопрос, пожалуйста."
+    fallback_text: str = (
+        "Извините, не получилось сформировать ответ. Повторите вопрос, пожалуйста."
+    )
 
 
 SETTINGS = AppSettings()

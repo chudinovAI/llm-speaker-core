@@ -4,7 +4,11 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from llm_speaker_core.indexer import _is_archived_row, _row_intent_tags, build_multi_index
+from llm_speaker_core.indexer import (
+    _is_archived_row,
+    _row_intent_tags,
+    build_multi_index,
+)
 from llm_speaker_core.rag import LexicalRAG, tokenize
 
 
@@ -198,7 +202,9 @@ def test_build_multi_index_manifest_uses_relative_paths(tmp_path: Path) -> None:
     assert payload["indexes"]["general"] == "rag_index.general.json"
 
 
-def test_rag_loads_manifest_with_stale_absolute_paths_from_local_directory(tmp_path: Path) -> None:
+def test_rag_loads_manifest_with_stale_absolute_paths_from_local_directory(
+    tmp_path: Path,
+) -> None:
     docs = [
         {
             "id": "web:1",

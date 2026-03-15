@@ -35,7 +35,7 @@ DEFAULT_SAMPLE_RATE = 48000
 SPEAKERS = ["aidar", "baya", "kseniya", "xenia", "eugene"]
 
 # Разбиение текста на предложения
-SENTENCE_SPLIT = re.compile(r'(?<=[.!?…])\s+')
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
 # Минимальная длина фрагмента для синтеза (символов)
 MIN_CHUNK_LEN = 10
@@ -48,6 +48,7 @@ DEFAULT_MAX_WAV_FILES = 50
 #  Текстовый препроцессор
 # --------------------------------------------------------------
 
+
 class TextPreprocessor:
     """
     Нормализует текст перед синтезом: сокращения, числа,
@@ -57,74 +58,99 @@ class TextPreprocessor:
     # Сокращения → полная форма
     ABBREVIATIONS = {
         # Адреса
-        r"\bул\.":   "улица",
-        r"\bпр\.":   "проспект",
+        r"\bул\.": "улица",
+        r"\bпр\.": "проспект",
         r"\bпр-т\.?": "проспект",
-        r"\bд\.":    "дом",
+        r"\bд\.": "дом",
         r"\bкорп\.": "корпус",
-        r"\bстр\.":  "строение",
-        r"\bкв\.":   "квартира",
-        r"\bкаб\.":  "кабинет",
-        r"\bауд\.":  "аудитория",
-        r"\bэт\.":   "этаж",
+        r"\bстр\.": "строение",
+        r"\bкв\.": "квартира",
+        r"\bкаб\.": "кабинет",
+        r"\bауд\.": "аудитория",
+        r"\bэт\.": "этаж",
         # Звания / обращения
-        r"\bпроф\.":  "профессор",
-        r"\bдоц\.":   "доцент",
+        r"\bпроф\.": "профессор",
+        r"\bдоц\.": "доцент",
         r"\bст\.\s*пр\.": "старший преподаватель",
-        r"\bзав\.":   "заведующий",
+        r"\bзав\.": "заведующий",
         # Учебное
-        r"\bлаб\.":   "лабораторная",
+        r"\bлаб\.": "лабораторная",
         r"\bпр\.\s*зан\.": "практическое занятие",
-        r"\bсем\.":   "семестр",
-        r"\bэкз\.":   "экзамен",
-        r"\bзач\.":   "зачёт",
+        r"\bсем\.": "семестр",
+        r"\bэкз\.": "экзамен",
+        r"\bзач\.": "зачёт",
         # Общее
-        r"\bг\.":     "город",
-        r"\bт\.е\.":  "то есть",
-        r"\bт\.д\.":  "так далее",
-        r"\bт\.п\.":  "тому подобное",
-        r"\bт\.к\.":  "так как",
-        r"\bтел\.":   "телефон",
-        r"\bдр\.":    "другое",
-        r"\bсм\.":    "смотри",
-        r"\bрис\.":   "рисунок",
-        r"\bтабл\.":  "таблица",
-        r"\bим\.":    "имени",
-        r"\bнапр\.":  "например",
+        r"\bг\.": "город",
+        r"\bт\.е\.": "то есть",
+        r"\bт\.д\.": "так далее",
+        r"\bт\.п\.": "тому подобное",
+        r"\bт\.к\.": "так как",
+        r"\bтел\.": "телефон",
+        r"\bдр\.": "другое",
+        r"\bсм\.": "смотри",
+        r"\bрис\.": "рисунок",
+        r"\bтабл\.": "таблица",
+        r"\bим\.": "имени",
+        r"\bнапр\.": "например",
     }
 
     # Единицы измерения
     UNITS = {
-        r"\bкг\b":   "килограмм",
-        r"\bг\b(?=[\s,\.])":    "грамм",
-        r"\bкм\b":   "километров",
-        r"\bм\b(?=[\s,\.])":    "метров",
-        r"\bсм\b":   "сантиметров",
-        r"\bмм\b":   "миллиметров",
-        r"\bч\b(?=[\s,\.])":    "часов",
-        r"\bмин\b":  "минут",
-        r"\bсек\b":  "секунд",
+        r"\bкг\b": "килограмм",
+        r"\bг\b(?=[\s,\.])": "грамм",
+        r"\bкм\b": "километров",
+        r"\bм\b(?=[\s,\.])": "метров",
+        r"\bсм\b": "сантиметров",
+        r"\bмм\b": "миллиметров",
+        r"\bч\b(?=[\s,\.])": "часов",
+        r"\bмин\b": "минут",
+        r"\bсек\b": "секунд",
         r"\bруб\b\.?": "рублей",
     }
 
     # Числительные для простых случаев (1-20, десятки, сотни)
     _ONES = {
-        "0": "ноль", "1": "один", "2": "два", "3": "три",
-        "4": "четыре", "5": "пять", "6": "шесть", "7": "семь",
-        "8": "восемь", "9": "девять", "10": "десять",
-        "11": "одиннадцать", "12": "двенадцать", "13": "тринадцать",
-        "14": "четырнадцать", "15": "пятнадцать", "16": "шестнадцать",
-        "17": "семнадцать", "18": "восемнадцать", "19": "девятнадцать",
+        "0": "ноль",
+        "1": "один",
+        "2": "два",
+        "3": "три",
+        "4": "четыре",
+        "5": "пять",
+        "6": "шесть",
+        "7": "семь",
+        "8": "восемь",
+        "9": "девять",
+        "10": "десять",
+        "11": "одиннадцать",
+        "12": "двенадцать",
+        "13": "тринадцать",
+        "14": "четырнадцать",
+        "15": "пятнадцать",
+        "16": "шестнадцать",
+        "17": "семнадцать",
+        "18": "восемнадцать",
+        "19": "девятнадцать",
     }
     _TENS = {
-        "20": "двадцать", "30": "тридцать", "40": "сорок",
-        "50": "пятьдесят", "60": "шестьдесят", "70": "семьдесят",
-        "80": "восемьдесят", "90": "девяносто",
+        "20": "двадцать",
+        "30": "тридцать",
+        "40": "сорок",
+        "50": "пятьдесят",
+        "60": "шестьдесят",
+        "70": "семьдесят",
+        "80": "восемьдесят",
+        "90": "девяносто",
     }
     _HUNDREDS = {
-        "100": "сто", "200": "двести", "300": "триста",
-        "400": "четыреста", "500": "пятьсот", "600": "шестьсот",
-        "700": "семьсот", "800": "восемьсот", "900": "девятьсот",
+        "100": "сто",
+        "200": "двести",
+        "300": "триста",
+        "400": "четыреста",
+        "500": "пятьсот",
+        "600": "шестьсот",
+        "700": "семьсот",
+        "800": "восемьсот",
+        "900": "девятьсот",
     }
 
     @classmethod
@@ -168,7 +194,7 @@ class TextPreprocessor:
 
     @classmethod
     def _number_with_zeros(cls, s: str) -> str:
-        #учет ведущих нулей
+        # учет ведущих нулей
         if not s or not s.isdigit():
             return s
 
@@ -191,12 +217,12 @@ class TextPreprocessor:
 
     @classmethod
     def process(cls, text: str) -> str:
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold**
-        text = re.sub(r'\*(.+?)\*', r'\1', text)        # *italic*
-        text = re.sub(r'`(.+?)`', r'\1', text)          # `code`
-        text = re.sub(r'#{1,6}\s*', '', text)            # ### headers
-        text = re.sub(r'^\s*[-*•]\s+', '', text, flags=re.MULTILINE)  # bullet points
-        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # numbered lists
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # **bold**
+        text = re.sub(r"\*(.+?)\*", r"\1", text)  # *italic*
+        text = re.sub(r"`(.+?)`", r"\1", text)  # `code`
+        text = re.sub(r"#{1,6}\s*", "", text)  # ### headers
+        text = re.sub(r"^\s*[-*•]\s+", "", text, flags=re.MULTILINE)  # bullet points
+        text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)  # numbered lists
 
         # 2. Спецсимволы
         text = text.replace("—", " — ")
@@ -218,7 +244,8 @@ class TextPreprocessor:
             for part in parts:
                 words.append(cls._number_with_zeros(part))
             return " ".join(words)
-        text = re.sub(r'\b\d{1,4}(?:-\d{1,4})+\b', _replace_compound, text)
+
+        text = re.sub(r"\b\d{1,4}(?:-\d{1,4})+\b", _replace_compound, text)
 
         def _replace_time(m):
             h, mins = m.group(1), m.group(2)
@@ -227,15 +254,17 @@ class TextPreprocessor:
             if int(mins) == 0:
                 return h_word
             return f"{h_word} {m_word}"
-        text = re.sub(r'\b(\d{1,2}):(\d{2})\b', _replace_time, text)
+
+        text = re.sub(r"\b(\d{1,2}):(\d{2})\b", _replace_time, text)
 
         def _replace_number(m):
             s = m.group(0)
             return cls._number_with_zeros(s)
-        text = re.sub(r'\b\d{1,4}\b', _replace_number, text)
 
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'\s+([,\.!?;:])', r'\1', text)
+        text = re.sub(r"\b\d{1,4}\b", _replace_number, text)
+
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\s+([,\.!?;:])", r"\1", text)
         text = text.strip()
 
         return text
@@ -245,8 +274,8 @@ class TextPreprocessor:
 #  Silero TTS Engine
 # --------------------------------------------------------------
 
-class SileroTTS:
 
+class SileroTTS:
     def __init__(
         self,
         speaker: str = DEFAULT_SPEAKER,
@@ -263,7 +292,9 @@ class SileroTTS:
         if device == "cpu":
             torch.set_num_threads(num_threads)
 
-        print(f"[TTS] Загрузка Silero v5 (speaker={speaker}, sr={sample_rate}, speed={speed})...")
+        print(
+            f"[TTS] Загрузка Silero v5 (speaker={speaker}, sr={sample_rate}, speed={speed})..."
+        )
         t0 = time.perf_counter()
 
         self.model, _ = torch.hub.load(
@@ -326,7 +357,7 @@ class SileroTTS:
                 f"{len(chunk):>3} сим | "
                 f"{elapsed * 1000:.0f}мс | "
                 f"{duration:.1f}с аудио | "
-                f"\"{chunk[:50]}{'…' if len(chunk) > 50 else ''}\""
+                f'"{chunk[:50]}{"…" if len(chunk) > 50 else ""}"'
             )
 
         # Склеиваем с маленькой паузой между предложениями
@@ -360,7 +391,9 @@ class SileroTTS:
         sf.write(output_path, full_audio, self.sample_rate, subtype="PCM_16")
         return total_duration
 
-    def speak(self, text: str, output_path: str | None = None, play_audio: bool = False) -> float:
+    def speak(
+        self, text: str, output_path: str | None = None, play_audio: bool = False
+    ) -> float:
         """Синтезирует текст, по желанию пишет WAV и/или воспроизводит его."""
         full_audio, total_duration = self.synthesize_text(text)
         if len(full_audio) == 0:
@@ -376,6 +409,7 @@ class SileroTTS:
 # --------------------------------------------------------------
 #  Разбиение текста на предложения
 # --------------------------------------------------------------
+
 
 def split_into_sentences(text: str) -> list[str]:
     """Разбивает текст на предложения для потоковой генерации."""
@@ -415,6 +449,7 @@ def split_into_sentences(text: str) -> list[str]:
 #  Чтение из файла
 # --------------------------------------------------------------
 
+
 def read_file_once(path: str) -> str:
     """Читает весь файл целиком."""
     with open(path, "r", encoding="utf-8") as f:
@@ -442,7 +477,7 @@ def watch_file(path: str, tts: SileroTTS, output_dir: Path, max_files: int = 0):
     print(f"[WATCH] Новые строки → WAV в {output_dir}")
     if max_files > 0:
         print(f"[WATCH] Макс. файлов: {max_files} (старые удаляются)")
-    print(f"[WATCH] Ctrl+C для остановки\n")
+    print("[WATCH] Ctrl+C для остановки\n")
 
     counter = 0
     known_lines: list[str] = []
@@ -476,7 +511,7 @@ def watch_file(path: str, tts: SileroTTS, output_dir: Path, max_files: int = 0):
             current_lines = f.read().splitlines()
 
         # Находим новые строки (те что появились в конце)
-        new_lines = current_lines[len(known_lines):]
+        new_lines = current_lines[len(known_lines) :]
 
         # Если файл стал короче (перезаписан), сравниваем построчно
         if len(current_lines) < len(known_lines):
@@ -497,7 +532,7 @@ def watch_file(path: str, tts: SileroTTS, output_dir: Path, max_files: int = 0):
             output_path = output_dir / f"tts_{counter:04d}.wav"
 
             print(f"\n[WATCH] Получен текст #{counter}:")
-            print(f"  \"{line[:80]}{'…' if len(line) > 80 else ''}\"")
+            print(f'  "{line[:80]}{"…" if len(line) > 80 else ""}"')
 
             tts.synthesize_to_file(line, str(output_path))
             cleanup_old_wavs(output_dir, max_files)
@@ -507,6 +542,7 @@ def watch_file(path: str, tts: SileroTTS, output_dir: Path, max_files: int = 0):
 #  CLI
 # --------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Silero TTS — читает текст LLM, генерирует WAV"
@@ -515,51 +551,67 @@ def main():
     # Источник текста
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument(
-        "--input", type=str,
+        "--input",
+        type=str,
         help="Путь к текстовому файлу с ответом LLM",
     )
     source.add_argument(
-        "--stdin", action="store_true",
+        "--stdin",
+        action="store_true",
         help="Читать текст из stdin",
     )
 
     # Режим
     parser.add_argument(
-        "--watch", action="store_true",
+        "--watch",
+        action="store_true",
         help="Следить за файлом (tail -f), каждая строка → WAV",
     )
 
     # Выход
     parser.add_argument(
-        "--output", type=str, default=None,
+        "--output",
+        type=str,
+        default=None,
         help="Путь для WAV файла (default: runtime/tts_output.wav / runtime/tts/)",
     )
 
     # Модель
     parser.add_argument(
-        "--speaker", type=str, default=DEFAULT_SPEAKER,
+        "--speaker",
+        type=str,
+        default=DEFAULT_SPEAKER,
         choices=SPEAKERS,
         help=f"Голос (default: {DEFAULT_SPEAKER})",
     )
     parser.add_argument(
-        "--sample-rate", type=int, default=DEFAULT_SAMPLE_RATE,
+        "--sample-rate",
+        type=int,
+        default=DEFAULT_SAMPLE_RATE,
         choices=[8000, 24000, 48000],
         help=f"Sample rate (default: {DEFAULT_SAMPLE_RATE})",
     )
     parser.add_argument(
-        "--device", type=str, default="cpu",
+        "--device",
+        type=str,
+        default="cpu",
         help="cpu или cuda (default: cpu)",
     )
     parser.add_argument(
-        "--speed", type=float, default=1.0,
+        "--speed",
+        type=float,
+        default=1.0,
         help="Скорость речи: 1.0 = норма, 1.3 = быстрее, 0.8 = медленнее (default: 1.0)",
     )
     parser.add_argument(
-        "--max-files", type=int, default=DEFAULT_MAX_WAV_FILES,
+        "--max-files",
+        type=int,
+        default=DEFAULT_MAX_WAV_FILES,
         help=f"Макс. WAV файлов в watch-режиме, 0 = без лимита (default: {DEFAULT_MAX_WAV_FILES})",
     )
     parser.add_argument(
-        "--play", action="store_true",
+        "--play",
+        action="store_true",
         help="Проигрывать синтезированный звук через sounddevice.",
     )
 
@@ -600,7 +652,7 @@ def main():
     output_path = args.output or "runtime/tts_output.wav"
 
     print(f"\n  Текст ({len(text)} сим):")
-    print(f"  \"{text[:100]}{'…' if len(text) > 100 else ''}\"\n")
+    print(f'  "{text[:100]}{"…" if len(text) > 100 else ""}"\n')
 
     tts.speak(text, output_path=output_path, play_audio=args.play)
     print()

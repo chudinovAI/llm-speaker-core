@@ -20,17 +20,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for runtime text/jsonl/wav outputs.",
     )
     parser.add_argument("--session-id", type=str, default="voice-live-1")
-    parser.add_argument("--list-devices", action="store_true", help="List ASR input devices and exit.")
-    parser.add_argument("--asr-device", type=int, default=None, help="ASR microphone device index.")
-    parser.add_argument("--asr-model", type=str, default="v3_e2e_ctc", help="GigaAM model name.")
+    parser.add_argument(
+        "--list-devices", action="store_true", help="List ASR input devices and exit."
+    )
+    parser.add_argument(
+        "--asr-device", type=int, default=None, help="ASR microphone device index."
+    )
+    parser.add_argument(
+        "--asr-model", type=str, default="v3_e2e_ctc", help="GigaAM model name."
+    )
     parser.add_argument("--wake-word", type=str, default=asr_module.DEFAULT_WAKE_WORD)
-    parser.add_argument("--stop-words", type=str, default=None, help="Comma-separated stop words.")
+    parser.add_argument(
+        "--stop-words", type=str, default=None, help="Comma-separated stop words."
+    )
     parser.add_argument("--no-speaker-verify", action="store_true")
     parser.add_argument("--tts-speaker", type=str, default="aidar")
-    parser.add_argument("--tts-sample-rate", type=int, default=48000, choices=[8000, 24000, 48000])
+    parser.add_argument(
+        "--tts-sample-rate", type=int, default=48000, choices=[8000, 24000, 48000]
+    )
     parser.add_argument("--tts-device", type=str, default="cpu")
     parser.add_argument("--tts-speed", type=float, default=1.0)
-    parser.add_argument("--tts-play", action="store_true", help="Play TTS through the local speaker.")
+    parser.add_argument(
+        "--tts-play", action="store_true", help="Play TTS through the local speaker."
+    )
     parser.add_argument("--mode", choices=("direct", "api"), default="direct")
     parser.add_argument(
         "--api-url",

@@ -9,7 +9,12 @@ from typing import Any
 import httpx
 
 from llm_speaker_core.api import build_service
-from llm_speaker_core.voice.tts import DEFAULT_SAMPLE_RATE, DEFAULT_SPEAKER, SPEAKERS, SileroTTS
+from llm_speaker_core.voice.tts import (
+    DEFAULT_SAMPLE_RATE,
+    DEFAULT_SPEAKER,
+    SPEAKERS,
+    SileroTTS,
+)
 
 SKIP_TEXTS = {
     "stop",
@@ -146,7 +151,9 @@ def _direct_query(service: Any, text: str, session_id: str) -> dict[str, Any]:
     }
 
 
-def _api_query(client: httpx.Client, api_url: str, text: str, session_id: str) -> dict[str, Any]:
+def _api_query(
+    client: httpx.Client, api_url: str, text: str, session_id: str
+) -> dict[str, Any]:
     response = client.post(api_url, json={"text": text, "session_id": session_id})
     response.raise_for_status()
     return response.json()
@@ -188,9 +195,11 @@ def run_bridge(args: argparse.Namespace) -> None:
     service = build_service() if args.mode == "direct" else None
     tts_counter = 0
 
-    with args.input.open("r", encoding="utf-8") as in_f, args.out.open(
-        "a", encoding="utf-8", buffering=1
-    ) as out_f, httpx.Client(timeout=args.timeout_s) as client:
+    with (
+        args.input.open("r", encoding="utf-8") as in_f,
+        args.out.open("a", encoding="utf-8", buffering=1) as out_f,
+        httpx.Client(timeout=args.timeout_s) as client,
+    ):
         if not args.from_start:
             in_f.seek(0, 2)
 
