@@ -12,5 +12,8 @@ data/
 *.json
 *.jsonl
 guap_docs/
+runtime/
+*.wav
+artifacts/
 # Virtual environments
 .venv
