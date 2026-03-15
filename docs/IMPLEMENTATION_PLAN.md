@@ -34,7 +34,7 @@
 
 5. Документация
 - План в этом файле.
-- Пошаговый запуск в `CONDA_RUNBOOK.md`.
+- Пошаговый запуск в `docs/CONDA_RUNBOOK.md`.
 
 ## Public Interfaces
 - Input DTO: `text: str`, `session_id: str`, `history?: list`.

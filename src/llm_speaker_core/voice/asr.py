@@ -1,22 +1,10 @@
 """
-ASR Pipeline — GigaAM-v3 Streaming
+ASR pipeline based on GigaAM v3 streaming.
 
-=======================================
-
-Установка зависимостей:
-  pip install sounddevice numpy torch soundfile
-  pip install git+https://github.com/salute-developers/GigaAM.git
-  pip install resemblyzer
-  pip install webrtcvad
-
-Использование:
-  python asr_pipeline.py
-  python asr_pipeline.py --list-devices
-  python asr_pipeline.py --device 1
-  python asr_pipeline.py --wake-word "привет гуап"
-  python asr_pipeline.py --stop-words "спасибо,стоп,пока"
-  python asr_pipeline.py --no-speaker-verify
-  python asr_pipeline.py --model v3_e2e_rnnt   # альтернативная модель
+CLI examples:
+  uv run llm-asr --list-devices
+  uv run llm-asr --device 1
+  uv run llm-asr --wake-word "привет гуап" --no-speaker-verify
 """
 
 import argparse
@@ -991,8 +979,8 @@ def main():
                         help="Стоп-слова через запятую")
     parser.add_argument("--no-speaker-verify", action="store_true",
                         help="Отключить верификацию голоса")
-    parser.add_argument("--output", type=str, default="asr_output.txt",
-                        help="Путь к файлу для LLM (default: asr_output.txt)")
+    parser.add_argument("--output", type=str, default="runtime/asr_output.txt",
+                        help="Путь к файлу для LLM (default: runtime/asr_output.txt)")
 
     args = parser.parse_args()
 
