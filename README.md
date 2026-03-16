@@ -1,3 +1,9 @@
+## Preinstall
+
+- miniconda
+- ollama
+- git + git-lfs
+
 ## Setup
 
 git pull

@@ -11,7 +11,15 @@ build/
 dist/
 wheels/
 artifacts/
-data/
+data/*
+!data/index_manifest.json
+!data/normalized/
+data/normalized/*
+!data/normalized/documents.jsonl
+!data/normalized/chunks.jsonl
+!data/indexes/
+data/indexes/*
+!data/indexes/.gitkeep
 guap_docs/
 runtime/
 *.wav
