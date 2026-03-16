@@ -45,13 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tts-play", action="store_true", help="Play TTS through the local speaker."
     )
-    parser.add_argument("--mode", choices=("direct", "api"), default="direct")
-    parser.add_argument(
-        "--api-url",
-        type=str,
-        default="http://127.0.0.1:8000/query",
-        help="Used only when --mode api.",
-    )
     return parser
 
 
@@ -98,14 +91,11 @@ def main() -> None:
     asr_process = subprocess.Popen(asr_cmd)
     bridge_args = argparse.Namespace(
         input=paths.asr_output,
-        mode=args.mode,
-        api_url=args.api_url,
         session_id=args.session_id,
         out=paths.llm_output,
         speaker_output=paths.speaker_output,
         events_out=paths.events_output,
         poll_interval=0.15,
-        timeout_s=35.0,
         from_start=False,
         tts_enabled=True,
         tts_output_dir=paths.tts_dir,

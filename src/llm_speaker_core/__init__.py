@@ -2,7 +2,5 @@
 
 __all__ = [
     "api",
-    "clean_data",
-    "indexer",
-    "rag",
+    "service",
 ]

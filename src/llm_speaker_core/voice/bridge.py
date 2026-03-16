@@ -6,8 +6,6 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-import httpx
-
 from llm_speaker_core.app.bootstrap import build_service
 from llm_speaker_core.voice.events import (
     CompositeVoiceEventSink,
@@ -42,18 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="ASR text file (one utterance per line).",
     )
     parser.add_argument(
-        "--mode",
-        choices=("direct", "api"),
-        default="direct",
-        help="direct = call LLM service in-process, api = POST to /query.",
-    )
-    parser.add_argument(
-        "--api-url",
-        type=str,
-        default="http://127.0.0.1:8000/query",
-        help="LLM API /query URL for --mode api.",
-    )
-    parser.add_argument(
         "--session-id",
         type=str,
         default="asr-live-1",
@@ -82,12 +68,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.15,
         help="Polling interval for file tailing.",
-    )
-    parser.add_argument(
-        "--timeout-s",
-        type=float,
-        default=35.0,
-        help="HTTP timeout seconds for --mode api.",
     )
     parser.add_argument(
         "--from-start",
@@ -162,15 +142,6 @@ def _direct_query(service: Any, text: str, session_id: str) -> dict[str, Any]:
         },
     }
 
-
-def _api_query(
-    client: httpx.Client, api_url: str, text: str, session_id: str
-) -> dict[str, Any]:
-    response = client.post(api_url, json={"text": text, "session_id": session_id})
-    response.raise_for_status()
-    return response.json()
-
-
 def _build_tts(args: argparse.Namespace) -> SileroTTS | None:
     if not args.tts_enabled:
         return None
@@ -212,20 +183,18 @@ def run_bridge(
 
     print(f"[ASR->LLM] input={args.input.resolve()}")
     print(f"[ASR->LLM] out={args.out.resolve()}")
-    print(f"[ASR->LLM] mode={args.mode}")
     print(f"[ASR->LLM] session_id={args.session_id}")
     if args.speaker_output:
         print(f"[ASR->LLM] speaker_out={args.speaker_output.resolve()}")
 
     tts = _build_tts(args)
-    service = build_service() if args.mode == "direct" else None
+    service = build_service()
     tts_counter = 0
     event_sink = CompositeVoiceEventSink(JsonlVoiceEventSink(args.events_out))
 
     with (
         args.input.open("r", encoding="utf-8") as in_f,
         args.out.open("a", encoding="utf-8", buffering=1) as out_f,
-        httpx.Client(timeout=args.timeout_s) as client,
     ):
         if not args.from_start:
             in_f.seek(0, 2)
@@ -247,10 +216,7 @@ def run_bridge(
                 VoiceEvent(kind="transcript_final", session_id=args.session_id, text=text),
             )
             try:
-                if args.mode == "direct":
-                    result = _direct_query(service, text, args.session_id)
-                else:
-                    result = _api_query(client, args.api_url, text, args.session_id)
+                result = _direct_query(service, text, args.session_id)
 
                 record = {
                     "ts": ts,

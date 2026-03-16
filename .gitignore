@@ -1,19 +1,17 @@
-# Python-generated files
 __pycache__/
 *.py[oc]
+*.egg-info
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.python-version
+.venv
 build/
 dist/
 wheels/
-*.egg-info
-.DS_Store
-*.txt
-*.pdf
+artifacts/
 data/
-*.json
-*.jsonl
 guap_docs/
 runtime/
 *.wav
-artifacts/
-# Virtual environments
-.venv

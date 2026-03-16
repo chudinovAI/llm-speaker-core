@@ -6,10 +6,16 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class AppSettings:
-    raw_corpus_path: Path = Path("suai_facts.txt")
-    cleaned_corpus_path: Path = Path("data/cleaned_corpus.jsonl")
-    quality_report_path: Path = Path("data/cleaning_report.json")
-    index_path: Path = Path("data/rag_index.json")
+    cloudflare_raw_dir: Path = Path("data/raw/cloudflare/latest")
+    cloudflare_records_path: Path = Path("data/raw/cloudflare/latest/records.jsonl")
+    normalized_documents_path: Path = Path("data/normalized/documents.jsonl")
+    normalized_chunks_path: Path = Path("data/normalized/chunks.jsonl")
+    hybrid_manifest_path: Path = Path("data/index_manifest.json")
+    hybrid_lexical_index_path: Path = Path("data/indexes/bm25/index.json")
+    hybrid_dense_index_path: Path = Path("data/indexes/faiss/index.json")
+    retrieval_backend: str = "hybrid"
+    embedding_model: str = "BAAI/bge-m3"
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
     rag_top_k: int = 3
     language: str = "ru"
     max_display_words: int = 70

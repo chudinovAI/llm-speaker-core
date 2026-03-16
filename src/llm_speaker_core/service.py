@@ -7,8 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from llm_speaker_core.rag import LexicalRAG, expand_query, tokenize
 from llm_speaker_core.settings import SETTINGS
+from llm_speaker_core.utils.text import expand_query, tokenize
 
 logger = logging.getLogger(__name__)
 SPEAKER_STOPWORDS = {
@@ -141,12 +141,23 @@ class GenerationResult:
     evidence_coverage: float
     answer_mode: str
     latency_ms: int
+    retrieval_version: str = "hybrid-rag-v2"
+    evidence_count: int = 0
+    grounding_score: float = 0.0
 
 
 class LLMProtocol(Protocol):
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str: ...
+
+
+class RetrievalProtocol(Protocol):
+    version: str
+
+    def search(self, query: str, top_k: int = 5) -> list[dict]: ...
+
+    def detect_intents(self, text: str) -> list[str]: ...
 
 
 class SessionMemory:
@@ -188,7 +199,7 @@ class Metrics:
 
 class LLMService:
     def __init__(
-        self, rag: LexicalRAG, llm: LLMProtocol, speaker_mode: str | None = None
+        self, rag: RetrievalProtocol, llm: LLMProtocol, speaker_mode: str | None = None
     ) -> None:
         self.rag = rag
         self.llm = llm
@@ -834,6 +845,12 @@ class LLMService:
         answer_mode = "grounded"
         if "нет точных подтвержденных данных" in display_text.lower():
             answer_mode = "uncertain"
+        retrieval_version = getattr(self.rag, "version", "hybrid-rag-v2")
+        grounding_score = round(
+            sum(float(chunk.get("score", 0.0)) for chunk in rag_chunks)
+            / max(len(rag_chunks), 1),
+            4,
+        )
 
         self.memory.add_turn(
             session_id=session_id, user_text=text, assistant_text=display_text
@@ -859,6 +876,9 @@ class LLMService:
             intent=intent,
             evidence_coverage=evidence_coverage,
             answer_mode=answer_mode,
+            retrieval_version=retrieval_version,
+            evidence_count=len(rag_chunks),
+            grounding_score=grounding_score,
             latency_ms=elapsed_ms,
         )
 
