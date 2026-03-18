@@ -282,3 +282,22 @@ def test_contacts_operational_query_without_contact_sources_becomes_uncertain() 
 
     assert result.answer_mode == "uncertain"
     assert "нет точных подтвержденных данных" in result.display_text.lower()
+
+
+def test_library_query_with_library_source_remains_grounded() -> None:
+    rag = StubRetrieval(
+        [
+            _doc(
+                "http://lib.guap.ru/",
+                "Библиотека ГУАП предоставляет читальный зал и электронные ресурсы.",
+                title="Библиотека ГУАП",
+                metadata={"source_facets": ["library", "contacts"], "page_type": "library"},
+            )
+        ]
+    )
+    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+
+    result = service.handle_query("Как работает библиотека ГУАП?", "s11")
+
+    assert result.answer_mode == "grounded"
+    assert "нет точных подтвержденных данных" not in result.display_text.lower()

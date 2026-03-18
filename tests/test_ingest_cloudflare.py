@@ -81,14 +81,14 @@ def test_document_from_cloudflare_record_trims_priem_footer_sections() -> None:
 def test_load_firecrawl_documents_reads_manifest_and_sets_urls(tmp_path: Path) -> None:
     root = tmp_path / "firecrawl"
     root.mkdir()
-    (root / "sample.md").write_text("# Отдел\nКонтакты и часы работы.", encoding="utf-8")
+    (root / "sample.md").write_text("# Библиотека ГУАП\nКонтакты и часы работы библиотеки.", encoding="utf-8")
     (root / "firecrawl_manifest.json").write_text(
         json.dumps(
             {
                 "entries": [
                     {
                         "file_name": "sample.md",
-                        "source_url": "https://guap.ru/example/contacts",
+                        "source_url": "http://lib.guap.ru/",
                     }
                 ]
             },
@@ -101,8 +101,39 @@ def test_load_firecrawl_documents_reads_manifest_and_sets_urls(tmp_path: Path) -
 
     assert len(docs) == 1
     assert docs[0].source_type == "firecrawl"
-    assert docs[0].canonical_url == "https://guap.ru/example/contacts"
+    assert docs[0].canonical_url == "http://lib.guap.ru/"
     assert docs[0].metadata["ingest_source"] == "firecrawl"
+    assert docs[0].metadata["page_type"] == "library"
+    assert "library" in docs[0].metadata["source_facets"]
+
+
+def test_load_firecrawl_documents_marks_faculty_contacts_without_admission_bias(tmp_path: Path) -> None:
+    root = tmp_path / "firecrawl"
+    root.mkdir()
+    (root / "faculty.md").write_text(
+        "# Контакты\nТелефон: (812) 571-16-89\nЭл. почта: aerospace1@guap.ru",
+        encoding="utf-8",
+    )
+    (root / "firecrawl_manifest.json").write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "file_name": "faculty.md",
+                        "source_url": "https://new.guap.ru/i01/contacts",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    docs = load_firecrawl_documents(root)
+
+    assert len(docs) == 1
+    assert "faculty_contacts" in docs[0].metadata["source_facets"]
+    assert "admission_contacts" not in docs[0].metadata["source_facets"]
 
 
 def test_dedupe_documents_marks_cross_source_duplicates() -> None:

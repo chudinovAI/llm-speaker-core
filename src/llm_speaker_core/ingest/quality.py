@@ -26,13 +26,23 @@ BOILERPLATE_MARKERS = (
 
 
 def _classify_page_type(doc: DocumentRecord) -> str:
-    path = urlparse(doc.canonical_url).path.rstrip("/") or "/"
+    parsed = urlparse(doc.canonical_url)
+    host = parsed.netloc.lower()
+    path = parsed.path.rstrip("/") or "/"
     title = doc.title.lower()
     if doc.source_type == "doc":
         return "document"
+    if host.startswith("lib.guap.ru") or "/struct/pols/lib" in path:
+        return "library"
+    if path.startswith("/med/") or "медицин" in title or "поликлиник" in title:
+        return "medical"
+    if path.startswith("/osvr/") or path.startswith("/c/osvr/") or "социальная стипендия" in title:
+        return "support"
     if path.endswith("/faq") or "вопросы и ответы" in title:
         return "faq"
     if path.endswith("/contacts") or "как нас найти" in title or "приемная комиссия" in title:
+        return "contacts"
+    if path.endswith("/empbook") or "отдел кадров" in title or "управление персонала" in title:
         return "contacts"
     if path.endswith("/rules") or "правила приема" in title or "положение" in title:
         return "policy"
@@ -46,7 +56,7 @@ def _classify_page_type(doc: DocumentRecord) -> str:
         return "directory"
     if path.endswith("/common") or path.endswith("/document") or path.endswith("/paid_edu") or path.endswith("/pay_edu"):
         return "reference"
-    if path.endswith("/objects") or "общежит" in title or "материально-техническое обеспечение" in title:
+    if path.startswith("/dom/") or path.endswith("/objects") or "общежит" in title or "материально-техническое обеспечение" in title:
         return "facilities"
     if any(path == value for value in ("/studlife", "/vrmp", "/sveden", "/eif", "/bach", "/mag", "/")):
         return "hub"
@@ -59,10 +69,13 @@ def _classify_page_type(doc: DocumentRecord) -> str:
 
 def _classify_source_facets(doc: DocumentRecord) -> list[str]:
     facets: set[str] = set()
-    path = urlparse(doc.canonical_url).path.rstrip("/") or "/"
+    parsed = urlparse(doc.canonical_url)
+    host = parsed.netloc.lower()
+    path = parsed.path.rstrip("/") or "/"
     low_title = doc.title.lower()
     low_text = doc.text.lower()
-    if "priem.guap.ru" in doc.canonical_url or path.startswith("/bach") or path.startswith("/mag") or path == "/":
+    full_text = f"{low_title}\n{low_text}"
+    if host == "priem.guap.ru" or path.startswith("/bach") or path.startswith("/mag"):
         facets.add("admission")
     if path.startswith("/bach"):
         facets.add("admission_bach")
@@ -72,8 +85,18 @@ def _classify_source_facets(doc: DocumentRecord) -> list[str]:
         facets.add("admission_directions")
     if path.endswith("/dates") or "сроки" in low_title:
         facets.add("admission_dates")
-    if path.endswith("/contacts") or "приемная комиссия" in low_title or "как нас найти" in low_title:
+    if host == "priem.guap.ru" and (
+        path.endswith("/contacts") or "приемная комиссия" in full_text or "как нас найти" in full_text
+    ):
         facets.add("admission_contacts")
+        facets.add("contacts")
+    elif (
+        path.endswith("/contacts")
+        or "контакты" in full_text
+        or "телефон:" in full_text
+        or "эл. почта" in full_text
+        or "@guap.ru" in full_text
+    ):
         facets.add("contacts")
     if path.endswith("/budget") or path.endswith("/plan") or "количество мест" in low_title:
         facets.add("admission_budget")
@@ -93,7 +116,7 @@ def _classify_source_facets(doc: DocumentRecord) -> list[str]:
         facets.add("official_info")
     if path.endswith("/common") or "адрес" in low_title:
         facets.add("location")
-    if path.endswith("/objects") or "общежит" in low_title:
+    if path.startswith("/dom/") or path.endswith("/objects") or "общежит" in full_text:
         facets.add("dorm")
         facets.add("location")
     if path.startswith("/studlife"):
@@ -104,6 +127,26 @@ def _classify_source_facets(doc: DocumentRecord) -> list[str]:
         facets.add("student_unions")
     if path.startswith("/vrmp") or "врмп" in low_title:
         facets.add("vrmp")
+    if host.startswith("lib.guap.ru") or "/struct/pols/lib" in path or "библиотек" in full_text or "читальн" in full_text:
+        facets.add("library")
+    if host.startswith("new.guap.ru") and path.endswith("/contacts"):
+        facets.add("faculty_contacts")
+        facets.add("contacts")
+    if path.endswith("/empbook") or "отдел кадров" in full_text or "управления персонала" in full_text:
+        facets.add("hr")
+        facets.add("contacts")
+    if path.startswith("/med/") or "медицинского центра" in full_text or "поликлиник" in full_text:
+        facets.add("medical")
+        facets.add("contacts")
+        facets.add("location")
+    if (
+        path.startswith("/osvr/")
+        or path.startswith("/c/osvr/")
+        or "социальная стипендия" in full_text
+        or "материальная помощь" in full_text
+        or "материальная поддержка" in full_text
+    ):
+        facets.add("support")
     return sorted(facets)
 
 

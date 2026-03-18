@@ -338,3 +338,123 @@ def test_hybrid_search_prefers_payment_pages_over_price_for_payment_query() -> N
 
     assert hits
     assert hits[0]["source"] == "https://guap.ru/eif/pay"
+
+
+def test_hybrid_search_prefers_library_sources_for_library_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Библиотека ГУАП. Читальный зал, электронные ресурсы и контакты библиотеки.",
+            "http://lib.guap.ru/",
+            "library",
+            title="Библиотека ГУАП",
+            metadata={"page_type": "library", "source_facets": ["library", "contacts"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Научные публикации и исследования ГУАП в области сетевых технологий.",
+            "https://guap.ru/science/sciact-projects",
+            "science",
+            title="Научные проекты",
+            metadata={"page_type": "detail", "source_facets": []},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="library",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Как работает библиотека ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "http://lib.guap.ru/"
+
+
+def test_hybrid_search_prefers_hr_sources_for_hr_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Отдел кадров работников Управления персонала ГУАП. Кабинет 23-05, email personal@guap.ru.",
+            "https://guap.ru/empbook",
+            "hr",
+            title="Отдел кадров",
+            metadata={"page_type": "contacts", "source_facets": ["hr", "contacts"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Контакты приемной комиссии ГУАП.",
+            "https://priem.guap.ru/contacts",
+            "admission",
+            title="Приемная комиссия",
+            metadata={"page_type": "contacts", "source_facets": ["admission", "admission_contacts", "contacts"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="hr",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Как связаться с отделом кадров ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/empbook"
+
+
+def test_hybrid_search_prefers_support_sources_for_scholarship_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Государственная социальная стипендия: заявление, документы и кабинет 11-05.",
+            "https://guap.ru/c/osvr/line/gos_soc_stip",
+            "support",
+            title="Государственная социальная стипендия",
+            metadata={"page_type": "support", "source_facets": ["support"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Общие сведения об университете и структуре.",
+            "https://guap.ru/sveden/common",
+            "sveden",
+            title="Основные сведения",
+            metadata={"page_type": "reference", "source_facets": ["official_info", "location"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="support",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Как оформить социальную стипендию в ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/c/osvr/line/gos_soc_stip"

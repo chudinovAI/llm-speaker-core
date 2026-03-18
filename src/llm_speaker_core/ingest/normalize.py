@@ -23,6 +23,7 @@ from llm_speaker_core.retrieval.schemas import ChunkRecord, DocumentRecord
 
 ARCHIVE_YEAR_RE = re.compile(r"\b(20\d{2})\b")
 MARKDOWN_H1_RE = re.compile(r"(?m)^#{1,2}\s+")
+MARKDOWN_TITLE_RE = re.compile(r"(?m)^#{1,6}\s+(.+?)\s*$")
 FOOTER_MARKERS = (
     "#### почтовый адрес:",
     "почтовый адрес:",
@@ -66,6 +67,19 @@ def _extract_title(record: dict, fallback_url: str) -> str:
     parsed = urlparse(fallback_url)
     tail = parsed.path.rstrip("/").split("/")[-1]
     return tail or parsed.netloc or "untitled"
+
+
+def _extract_markdown_title(text: str, fallback: str) -> str:
+    match = MARKDOWN_TITLE_RE.search(text)
+    if match is not None:
+        title = match.group(1).strip()
+        if title:
+            return title
+    for line in text.splitlines():
+        stripped = line.strip().strip("#").strip()
+        if len(stripped) >= 4:
+            return stripped[:160]
+    return fallback
 
 
 def _trim_header_noise(text: str, extraction_mode: str) -> str:
@@ -191,6 +205,7 @@ def parse_document_file(path: Path) -> tuple[str, str, bool]:
 
 def normalize_downloaded_document(path: Path, source_url: str) -> DocumentRecord:
     text, extraction_mode, needs_ocr = parse_document_file(path)
+    title = _extract_markdown_title(text, path.name) if path.suffix.lower() in {".md", ".txt"} else path.name
     text = clean_extracted_text(text, extraction_mode)
     canonical_url = canonicalize_url(source_url)
     doc = DocumentRecord(
@@ -198,7 +213,7 @@ def normalize_downloaded_document(path: Path, source_url: str) -> DocumentRecord
         source_url=source_url,
         canonical_url=canonical_url,
         source_type="doc",
-        title=path.name,
+        title=title,
         section=_guess_section(canonical_url),
         published_at=None,
         language="ru",
@@ -248,11 +263,32 @@ def load_firecrawl_documents(root: Path) -> list[DocumentRecord]:
         path = root / file_name
         if not path.exists() or not path.is_file():
             continue
-        doc = normalize_downloaded_document(path, source_url)
-        doc.source_type = "firecrawl"
-        doc.metadata["file_name"] = file_name
-        doc.metadata["ingest_source"] = "firecrawl"
-        documents.append(doc)
+        text, extraction_mode, needs_ocr = parse_document_file(path)
+        title = _extract_markdown_title(text, path.name)
+        text = clean_extracted_text(text, extraction_mode)
+        canonical_url = canonicalize_url(source_url)
+        doc = DocumentRecord(
+            doc_id=f"firecrawl:{_content_hash(canonical_url)}",
+            source_url=source_url,
+            canonical_url=canonical_url,
+            source_type="firecrawl",
+            title=title,
+            section=_guess_section(canonical_url),
+            published_at=None,
+            language="ru",
+            crawl_job_id=None,
+            content_hash=_content_hash(text or source_url),
+            extraction_mode=extraction_mode,
+            ocr_used=extraction_mode == "pdf_ocr",
+            quality_score=0.0,
+            text=text.strip(),
+            metadata={
+                "file_name": file_name,
+                "ingest_source": "firecrawl",
+            },
+            needs_ocr=needs_ocr,
+        )
+        documents.append(assess_document_quality(doc))
     return documents
 
 

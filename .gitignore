@@ -23,6 +23,7 @@ data/raw/*
 !data/eval/
 data/eval/*
 !data/eval/gold_queries.jsonl
+!data/eval/gold_queries_operational.jsonl
 !data/index_manifest.json
 !data/normalized/
 data/normalized/*
