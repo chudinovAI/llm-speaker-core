@@ -10,13 +10,26 @@ from llm_speaker_core.settings import SETTINGS
 logger = logging.getLogger(__name__)
 
 
-def build_service() -> LLMService:
+def build_service(retrieval_runtime_mode: str = "full") -> LLMService:
     rag: RetrievalProtocol | None = None
     backend = SETTINGS.retrieval_backend.lower()
+    runtime_mode = retrieval_runtime_mode.lower()
+    enable_dense = runtime_mode == "full"
+    enable_reranker = runtime_mode == "full"
 
     if backend in {"auto", "hybrid"} and SETTINGS.hybrid_manifest_path.exists():
-        logger.info("Loading new hybrid retrieval backend from %s", SETTINGS.hybrid_manifest_path)
-        rag = HybridRetrievalService.load(SETTINGS.hybrid_manifest_path)
+        logger.info(
+            "Loading hybrid retrieval backend from %s (mode=%s, dense=%s, reranker=%s)",
+            SETTINGS.hybrid_manifest_path,
+            runtime_mode,
+            enable_dense,
+            enable_reranker,
+        )
+        rag = HybridRetrievalService.load(
+            SETTINGS.hybrid_manifest_path,
+            enable_dense=enable_dense,
+            enable_reranker=enable_reranker,
+        )
 
     if rag is None:
         raise RuntimeError(

@@ -45,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tts-play", action="store_true", help="Play TTS through the local speaker."
     )
+    parser.add_argument(
+        "--retrieval-mode",
+        type=str,
+        default="fast",
+        choices=["fast", "full"],
+        help="Retrieval runtime mode for voice stack. 'fast' disables dense+rereanker.",
+    )
     return parser
 
 
@@ -104,6 +111,7 @@ def main() -> None:
         tts_sample_rate=args.tts_sample_rate,
         tts_device=args.tts_device,
         tts_speed=args.tts_speed,
+        retrieval_mode=args.retrieval_mode,
     )
 
     try:

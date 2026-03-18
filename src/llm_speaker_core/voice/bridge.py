@@ -116,6 +116,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="TTS speed multiplier.",
     )
+    parser.add_argument(
+        "--retrieval-mode",
+        type=str,
+        default="fast",
+        choices=["fast", "full"],
+        help="Retrieval runtime mode: fast disables dense+rereanker for local voice responsiveness.",
+    )
     return parser
 
 
@@ -188,7 +195,7 @@ def run_bridge(
         print(f"[ASR->LLM] speaker_out={args.speaker_output.resolve()}")
 
     tts = _build_tts(args)
-    service = build_service()
+    service = build_service(retrieval_runtime_mode=args.retrieval_mode)
     tts_counter = 0
     event_sink = CompositeVoiceEventSink(JsonlVoiceEventSink(args.events_out))
 

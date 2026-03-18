@@ -144,15 +144,25 @@ class HybridRetrievalService:
         self.manifest = manifest
 
     @classmethod
-    def load(cls, manifest_path: Path) -> "HybridRetrievalService":
+    def load(
+        cls,
+        manifest_path: Path,
+        *,
+        enable_dense: bool = True,
+        enable_reranker: bool = True,
+    ) -> "HybridRetrievalService":
         manifest = IndexManifest.from_path(manifest_path)
         lexical = LexicalIndex.load(manifest_path.parent / manifest.lexical_path)
         dense = None
-        if manifest.dense_path:
+        if enable_dense and manifest.dense_path:
             dense_path = manifest_path.parent / manifest.dense_path
             if dense_path.exists():
                 dense = DenseIndex.load(dense_path)
-        reranker = CrossEncoderReranker(manifest.reranker_model) if manifest.reranker_model else None
+        reranker = (
+            CrossEncoderReranker(manifest.reranker_model)
+            if enable_reranker and manifest.reranker_model
+            else None
+        )
         return cls(lexical=lexical, dense=dense, reranker=reranker, manifest=manifest)
 
     @staticmethod
