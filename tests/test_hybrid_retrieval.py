@@ -458,3 +458,83 @@ def test_hybrid_search_prefers_support_sources_for_scholarship_query() -> None:
 
     assert hits
     assert hits[0]["source"] == "https://guap.ru/c/osvr/line/gos_soc_stip"
+
+
+def test_hybrid_search_prefers_faculty_contacts_for_institute_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Институт аэрокосмических приборов и систем. Контакты директора, телефоны и почта.",
+            "https://new.guap.ru/i01/contacts",
+            "i01",
+            title="Институт аэрокосмических приборов и систем",
+            metadata={"page_type": "contacts", "source_facets": ["faculty_contacts", "contacts"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Поступающим в ГУАП: калькулятор направлений и общая информация.",
+            "https://priem.guap.ru/calc",
+            "admission",
+            title="Калькулятор направлений",
+            metadata={"page_type": "catalog", "source_facets": ["admission", "admission_directions"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="faculty-contacts",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Как связаться с институтом аэрокосмических приборов и систем?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://new.guap.ru/i01/contacts"
+
+
+def test_hybrid_search_prefers_specific_dorm_page_for_specific_dorm_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Общежитие 2 ГУАП. Адрес и информация о проживании.",
+            "https://guap.ru/dom/2",
+            "dom",
+            title="Общежитие 2",
+            metadata={"page_type": "facilities", "source_facets": ["dorm", "location"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Материально-техническое обеспечение и общежития ГУАП.",
+            "https://guap.ru/sveden/objects",
+            "sveden",
+            title="Объекты и общежития",
+            metadata={"page_type": "facilities", "source_facets": ["dorm", "location"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="dorm-dom2",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Где находится общежитие 2 ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/dom/2"

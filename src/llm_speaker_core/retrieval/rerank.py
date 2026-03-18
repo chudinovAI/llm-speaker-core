@@ -70,13 +70,16 @@ class CrossEncoderReranker:
                 scores.append(overlap + math.tanh(hit.score))
         rescored: list[RetrievalHit] = []
         for hit, score in zip(hits, scores, strict=False):
+            combined_score = float(score)
+            if self._model is not None:
+                combined_score += 0.35 * max(hit.score, 0.0)
             rescored.append(
                 RetrievalHit(
                     chunk_id=hit.chunk_id,
                     doc_id=hit.doc_id,
                     source=hit.source,
                     text=hit.text,
-                    score=round(float(score), 6),
+                    score=round(combined_score, 6),
                     retrieval_stage="rerank",
                     metadata=dict(hit.metadata),
                 )

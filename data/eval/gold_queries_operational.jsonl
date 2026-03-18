@@ -1,5 +1,5 @@
-{"query":"Как работает библиотека ГУАП?","expected_sources":["http://lib.guap.ru/","https://docs.guap.ru/sveden/struct/pols/lib.pdf"]}
-{"query":"Где находятся электронные ресурсы библиотеки ГУАП?","expected_sources":["https://lib.guap.ru/jirbis2/index.php?option=com_content&view=article&id=28:elektronnye-resursy-biblioteki&catid=2:static&Itemid=488","http://lib.guap.ru/"]}
+{"query":"Где искать библиотечные ресурсы ГУАП?","expected_sources":["http://lib.guap.ru/","https://lib.guap.ru/jirbis2/index.php"]}
+{"query":"Где находятся электронные ресурсы библиотеки ГУАП?","expected_sources":["https://lib.guap.ru/jirbis2/index.php","http://lib.guap.ru/"]}
 {"query":"Как связаться с отделом кадров ГУАП?","expected_sources":["https://guap.ru/empbook","https://docs.guap.ru/sveden/struct/pols/up_okr.pdf"]}
 {"query":"Где находится медицинский центр ГУАП?","expected_sources":["https://guap.ru/med/struct"]}
 {"query":"Как оформить социальную стипендию в ГУАП?","expected_sources":["https://guap.ru/c/osvr/line/gos_soc_stip","https://guap.ru/osvr/line/social"]}

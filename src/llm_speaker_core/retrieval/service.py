@@ -132,7 +132,7 @@ FACET_RULES = {
         "source_facet_penalty": {},
     },
     "dorm": {
-        "path_bonus": {"/objects": 0.46, "/pay_dom": 0.18},
+        "path_bonus": {"/objects": 0.34, "/dom/": 0.28, "/dom/2": 0.42, "/pay_dom": 0.18},
         "path_penalty": {"/inter/": 0.24},
         "page_type_bonus": {"facilities": 0.34, "reference": 0.12},
         "page_type_penalty": {"landing": 0.1},
@@ -148,9 +148,9 @@ FACET_RULES = {
         "source_facet_penalty": {},
     },
     "library": {
-        "path_bonus": {"lib.guap.ru": 0.48, "/struct/pols/lib": 0.3, "/jirbis2/": 0.18},
+        "path_bonus": {"lib.guap.ru": 0.48, "/struct/pols/lib": 0.3, "/jirbis2/": 0.28, "/jirbis2/index.php": 0.16},
         "path_penalty": {"/science/": 0.28, "/pubs/": 0.28, "/targets/": 0.18},
-        "page_type_bonus": {"library": 0.34, "reference": 0.1},
+        "page_type_bonus": {"library": 0.38, "reference": 0.1},
         "page_type_penalty": {"faq": 0.12, "hub": 0.08},
         "source_facet_bonus": {"library": 0.52},
         "source_facet_penalty": {},
@@ -172,7 +172,7 @@ FACET_RULES = {
         "source_facet_penalty": {},
     },
     "support": {
-        "path_bonus": {"/osvr/line/": 0.44, "/c/osvr/line/": 0.44, "/gos_soc_stip": 0.3, "/help": 0.18},
+        "path_bonus": {"/osvr/line/": 0.44, "/c/osvr/line/": 0.44, "/gos_soc_stip": 0.26, "/help": 0.34},
         "path_penalty": {"/science/": 0.24, "/pubs/": 0.24},
         "page_type_bonus": {"support": 0.3, "detail": 0.08},
         "page_type_penalty": {"hub": 0.08},
@@ -180,7 +180,7 @@ FACET_RULES = {
         "source_facet_penalty": {},
     },
     "faculty_contacts": {
-        "path_bonus": {"new.guap.ru/": 0.18, "/contacts": 0.34},
+        "path_bonus": {"new.guap.ru/": 0.34, "/contacts": 0.34},
         "path_penalty": {"priem.guap.ru/contacts": 0.26, "/sveden/managers": 0.18},
         "page_type_bonus": {"contacts": 0.3},
         "page_type_penalty": {"directory": 0.16, "hub": 0.08},
