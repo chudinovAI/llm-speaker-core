@@ -41,6 +41,14 @@ EARLY_FOOTER_MARKERS = (
     "## основные документы гуап",
     "## полезные ресурсы",
 )
+DEDUP_PRESERVE_FACETS = {
+    "faculty_contacts",
+    "library",
+    "hr",
+    "medical",
+    "support",
+    "dorm",
+}
 
 
 def _content_hash(text: str) -> str:
@@ -299,18 +307,21 @@ def dedupe_documents(documents: list[DocumentRecord]) -> list[DocumentRecord]:
     deduped: list[DocumentRecord] = []
     for doc in documents:
         canonical = canonicalize_url(doc.canonical_url or doc.source_url)
+        source_facets = {str(value) for value in doc.metadata.get("source_facets", [])}
+        preserve_variant = bool(source_facets & DEDUP_PRESERVE_FACETS)
         if canonical in seen_urls:
             doc.is_duplicate = True
             doc.quality_score = min(doc.quality_score, 0.1)
-        elif is_near_duplicate(doc.text, seen_fingerprints, seen_signatures):
+        elif not preserve_variant and is_near_duplicate(doc.text, seen_fingerprints, seen_signatures):
             doc.is_duplicate = True
             doc.quality_score = min(doc.quality_score, 0.1)
         else:
             seen_urls.add(canonical)
-            seen_fingerprints.add(normalized_fingerprint(doc.text))
-            signature = similarity_signature(doc.text)
-            if signature:
-                seen_signatures.add(signature)
+            if not preserve_variant:
+                seen_fingerprints.add(normalized_fingerprint(doc.text))
+                signature = similarity_signature(doc.text)
+                if signature:
+                    seen_signatures.add(signature)
         deduped.append(doc)
     return deduped
 

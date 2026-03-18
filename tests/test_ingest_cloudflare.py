@@ -151,3 +151,34 @@ def test_dedupe_documents_marks_cross_source_duplicates() -> None:
     assert len(docs) == 2
     assert docs[0].is_duplicate is False
     assert docs[1].is_duplicate is True
+
+
+def test_dedupe_documents_preserves_template_like_faculty_contacts(tmp_path: Path) -> None:
+    root = tmp_path / "firecrawl"
+    root.mkdir()
+    common_text = (
+        "# Контакты\n"
+        "Телефон: (812) 571-16-89\n"
+        "Эл. почта: aerospace1@guap.ru\n"
+        "Директор института и заместители."
+    )
+    (root / "i01.md").write_text(common_text, encoding="utf-8")
+    (root / "i02.md").write_text(common_text.replace("aerospace1", "radio2"), encoding="utf-8")
+    (root / "firecrawl_manifest.json").write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {"file_name": "i01.md", "source_url": "https://new.guap.ru/i01/contacts"},
+                    {"file_name": "i02.md", "source_url": "https://new.guap.ru/i02/contacts"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    docs = dedupe_documents(load_firecrawl_documents(root))
+
+    assert len(docs) == 2
+    assert docs[0].is_duplicate is False
+    assert docs[1].is_duplicate is False
