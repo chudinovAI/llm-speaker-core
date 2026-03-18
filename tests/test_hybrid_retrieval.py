@@ -19,6 +19,7 @@ def _chunk(
     quality_flags: list[str] | None = None,
     quality_score: float = 1.0,
     title: str | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> ChunkRecord:
     return ChunkRecord(
         chunk_id=chunk_id,
@@ -39,7 +40,7 @@ def _chunk(
         quality_score=quality_score,
         text=text,
         section_path=[section],
-        metadata={},
+        metadata=metadata or {},
         quality_flags=quality_flags or [],
         source=source,
         is_archived=is_archived,
@@ -165,3 +166,135 @@ def test_hybrid_search_penalizes_faq_and_prefers_structured_contacts_page() -> N
     assert hits
     assert hits[0]["source"] == "https://priem.guap.ru/contacts"
     assert hits[1]["source"] != "https://guap.ru/faq"
+
+
+def test_hybrid_search_prefers_calc_for_directions_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Калькулятор направлений приема в ГУАП. Подбор программ бакалавриата и магистратуры.",
+            "https://priem.guap.ru/calc",
+            "admission",
+            title="Калькулятор направлений",
+            metadata={"page_type": "catalog", "source_facets": ["admission", "admission_directions"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Правила приема в бакалавриат и специалитет ГУАП.",
+            "https://priem.guap.ru/bach/rules",
+            "admission",
+            title="Правила приема",
+            metadata={"page_type": "policy", "source_facets": ["admission", "admission_bach"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="directions",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-18T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Какие направления есть в ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://priem.guap.ru/calc"
+
+
+def test_hybrid_search_prefers_dates_for_deadline_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Сроки проведения приема в ГУАП. Даты подачи документов и зачисления.",
+            "https://priem.guap.ru/bach/dates",
+            "admission",
+            title="Сроки проведения приема",
+            metadata={"page_type": "schedule", "source_facets": ["admission", "admission_dates", "admission_bach"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Правила приема в бакалавриат и специалитет ГУАП.",
+            "https://priem.guap.ru/bach/rules",
+            "admission",
+            title="Правила приема",
+            metadata={"page_type": "policy", "source_facets": ["admission", "admission_bach"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="dates",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-18T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Какие сроки приема в ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://priem.guap.ru/bach/dates"
+
+
+def test_hybrid_search_prefers_student_unions_over_generic_clubs() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Студенческое самоуправление. Профком студентов и аспирантов ГУАП.",
+            "https://guap.ru/studlife/pposa",
+            "studlife",
+            title="Профком студентов и аспирантов",
+            metadata={"page_type": "organization", "source_facets": ["student_life", "student_unions"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Совет старост ГУАП. Студенческое самоуправление.",
+            "https://guap.ru/studlife/starsovet",
+            "studlife",
+            title="Совет старост ГУАП",
+            metadata={"page_type": "organization", "source_facets": ["student_life", "student_unions"]},
+        ),
+        _chunk(
+            "doc3:0",
+            "Киберспортивный клуб ГУАП. Турниры и тренировки.",
+            "https://guap.ru/studlife/cyber",
+            "studlife",
+            title="Киберспортивный клуб",
+            metadata={"page_type": "profile", "source_facets": ["student_life"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="unions",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-18T00:00:00Z",
+        doc_count=3,
+        chunk_count=3,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Есть ли в ГУАП студенческие объединения?", top_k=3)
+
+    assert hits
+    assert hits[0]["source"] in {
+        "https://guap.ru/studlife/pposa",
+        "https://guap.ru/studlife/starsovet",
+    }
+    assert "https://guap.ru/studlife/cyber" not in {hit["source"] for hit in hits[:2]}

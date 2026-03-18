@@ -9,7 +9,7 @@ from llm_speaker_core.retrieval.dense import DenseIndex
 from llm_speaker_core.retrieval.lexical import LexicalIndex
 from llm_speaker_core.retrieval.rerank import CrossEncoderReranker
 from llm_speaker_core.retrieval.schemas import ChunkRecord, EvidencePack, IndexManifest, RetrievalHit
-from llm_speaker_core.utils.text import INTENT_HINTS, expand_query, tokenize
+from llm_speaker_core.utils.text import INTENT_HINTS, detect_facets, expand_query, tokenize
 
 PATH_TOKEN_ALIASES = {
     "bach": ("бакалавриат", "специалитет", "поступление", "направления"),
@@ -28,6 +28,12 @@ PATH_TOKEN_ALIASES = {
     "studlife": ("студенты", "активности", "объединения", "клубы"),
     "vrmp": ("воспитательная", "молодежная", "политика"),
     "tochka": ("точка", "кипения"),
+    "calc": ("направления", "калькулятор", "программы", "профили"),
+    "plan": ("бюджет", "места", "прием"),
+    "pposa": ("объединения", "профком", "самоуправление"),
+    "starsovet": ("объединения", "старостат", "самоуправление"),
+    "domsovet": ("общежитие", "объединения", "самоуправление"),
+    "managers": ("руководство", "сотрудники"),
     "faq": ("вопросы", "ответы"),
 }
 PREFERRED_SOURCE_HINTS = {
@@ -37,6 +43,88 @@ PREFERRED_SOURCE_HINTS = {
     "student_life": ("/studlife", "/vrmp"),
     "official_info": ("/sveden", "/document"),
     "tuition": ("/eif/", "/sveden/pay_edu", "/sveden/paid_edu", "/price", "/pay", "/pol_usl"),
+}
+FACET_RULES = {
+    "admission_directions": {
+        "path_bonus": {"/calc": 0.44, "/bach": 0.18, "/mag": 0.18},
+        "path_penalty": {"/rules": 0.24, "/contacts": 0.16},
+        "page_type_bonus": {"catalog": 0.34, "hub": 0.14},
+        "page_type_penalty": {"policy": 0.22, "contacts": 0.12, "directory": 0.12},
+        "source_facet_bonus": {"admission_directions": 0.44, "admission_bach": 0.14, "admission_mag": 0.14},
+        "source_facet_penalty": {},
+    },
+    "admission_dates": {
+        "path_bonus": {"/dates": 0.48},
+        "path_penalty": {"/rules": 0.18},
+        "page_type_bonus": {"schedule": 0.38},
+        "page_type_penalty": {"policy": 0.18, "catalog": 0.1},
+        "source_facet_bonus": {"admission_dates": 0.48},
+        "source_facet_penalty": {},
+    },
+    "admission_contacts": {
+        "path_bonus": {"/contacts": 0.46, "priem.guap.ru/contacts": 0.14},
+        "path_penalty": {"/sveden/managers": 0.24, "/fspo": 0.18, "/fdpo": 0.18},
+        "page_type_bonus": {"contacts": 0.34},
+        "page_type_penalty": {"directory": 0.24, "hub": 0.1},
+        "source_facet_bonus": {"admission_contacts": 0.46, "contacts": 0.16},
+        "source_facet_penalty": {},
+    },
+    "admission_budget": {
+        "path_bonus": {"/budget": 0.28, "/plan": 0.34},
+        "path_penalty": {"/rules": 0.16},
+        "page_type_bonus": {"plan": 0.34, "reference": 0.14},
+        "page_type_penalty": {"policy": 0.12},
+        "source_facet_bonus": {"admission_budget": 0.42},
+        "source_facet_penalty": {},
+    },
+    "admission_mag": {
+        "path_bonus": {"/mag": 0.34},
+        "path_penalty": {"/bach": 0.18},
+        "page_type_bonus": {"hub": 0.16},
+        "page_type_penalty": {"policy": 0.14},
+        "source_facet_bonus": {"admission_mag": 0.44},
+        "source_facet_penalty": {"admission_bach": 0.18},
+    },
+    "tuition_price": {
+        "path_bonus": {"/price": 0.32, "/paid_edu": 0.22, "/pay_edu": 0.24},
+        "path_penalty": {"/monitor": 0.18, "/rekv": 0.18, "/pol_zak": 0.18},
+        "page_type_bonus": {"document": 0.38, "detail": 0.16, "reference": 0.12},
+        "page_type_penalty": {"hub": 0.08},
+        "source_facet_bonus": {"tuition_price": 0.44, "tuition": 0.12},
+        "source_facet_penalty": {},
+    },
+    "tuition_payment": {
+        "path_bonus": {"/pay": 0.34, "/pol_usl": 0.34, "/inf_dog": 0.22},
+        "path_penalty": {"/monitor": 0.14},
+        "page_type_bonus": {"policy": 0.18, "detail": 0.24, "document": 0.08},
+        "page_type_penalty": {"hub": 0.08},
+        "source_facet_bonus": {"tuition_payment": 0.44, "tuition": 0.12},
+        "source_facet_penalty": {},
+    },
+    "student_unions": {
+        "path_bonus": {"/pposa": 0.42, "/starsovet": 0.42, "/domsovet": 0.32},
+        "path_penalty": {"/cyber": 0.18, "/design": 0.18, "/evo": 0.12},
+        "page_type_bonus": {"organization": 0.34, "hub": 0.1},
+        "page_type_penalty": {"profile": 0.06},
+        "source_facet_bonus": {"student_unions": 0.44},
+        "source_facet_penalty": {},
+    },
+    "dorm": {
+        "path_bonus": {"/objects": 0.46, "/pay_dom": 0.18},
+        "path_penalty": {"/inter/": 0.24},
+        "page_type_bonus": {"facilities": 0.34, "reference": 0.12},
+        "page_type_penalty": {"landing": 0.1},
+        "source_facet_bonus": {"dorm": 0.44, "location": 0.1},
+        "source_facet_penalty": {},
+    },
+    "vrmp": {
+        "path_bonus": {"/vrmp": 0.34, "/tochka": 0.24},
+        "path_penalty": {"/anticor": 0.24, "/eif/": 0.22},
+        "page_type_bonus": {"hub": 0.16, "profile": 0.18},
+        "page_type_penalty": {"faq": 0.14},
+        "source_facet_bonus": {"vrmp": 0.44},
+        "source_facet_penalty": {},
+    },
 }
 
 
@@ -78,6 +166,9 @@ class HybridRetrievalService:
 
     def _query_expansions(self, query: str) -> list[str]:
         return expand_query(tokenize(query))
+
+    def _query_facets(self, query: str) -> list[str]:
+        return detect_facets(query)
 
     def _structural_bonus(self, query: str, hit: RetrievalHit) -> float:
         query_tokens = set(self._query_expansions(query))
@@ -134,9 +225,38 @@ class HybridRetrievalService:
                 bonus += 0.28
         return bonus
 
+    def _facet_bonus(self, hit: RetrievalHit, facets: list[str]) -> float:
+        if not facets:
+            return 0.0
+        source = hit.source.lower()
+        page_type = str(hit.metadata.get("page_type", ""))
+        source_facets = {str(value) for value in hit.metadata.get("source_facets", [])}
+        bonus = 0.0
+        penalty = 0.0
+        for facet in facets:
+            rules = FACET_RULES.get(facet)
+            if not rules:
+                continue
+            for hint, value in rules["path_bonus"].items():
+                if hint in source:
+                    bonus += value
+            for hint, value in rules["path_penalty"].items():
+                if hint in source:
+                    penalty += value
+            bonus += rules["page_type_bonus"].get(page_type, 0.0)
+            penalty += rules["page_type_penalty"].get(page_type, 0.0)
+            for source_facet, value in rules["source_facet_bonus"].items():
+                if source_facet in source_facets:
+                    bonus += value
+            for source_facet, value in rules["source_facet_penalty"].items():
+                if source_facet in source_facets:
+                    penalty += value
+        return bonus - penalty
+
     def _source_penalty(self, hit: RetrievalHit, intents: list[str]) -> float:
         source = hit.source.lower()
         flags = {str(flag) for flag in hit.metadata.get("quality_flags", [])}
+        page_type = str(hit.metadata.get("page_type", ""))
         penalty = 0.0
         if hit.metadata.get("is_low_signal", False):
             penalty += 0.45
@@ -148,6 +268,8 @@ class HybridRetrievalService:
             penalty += 0.34
         if "/greeting" in source:
             penalty += 0.16
+        if page_type == "faq":
+            penalty += 0.12
         if any(intent in {"admission", "contacts", "official_info"} for intent in intents) and "/faq" in source:
             penalty += 0.12
         for intent in intents:
@@ -180,6 +302,7 @@ class HybridRetrievalService:
 
     def _merge_hits(self, query: str, hits: list[RetrievalHit]) -> list[RetrievalHit]:
         intents = self.detect_intents(query)
+        facets = self._query_facets(query)
         hits = self._normalize_stage_scores(hits)
         by_chunk: dict[str, RetrievalHit] = {}
         for hit in hits:
@@ -188,6 +311,7 @@ class HybridRetrievalService:
                 - self._freshness_penalty(hit, intents)
                 - self._source_penalty(hit, intents)
                 + self._source_bonus(hit, intents)
+                + self._facet_bonus(hit, facets)
                 + self._structural_bonus(query, hit)
             )
             merged = RetrievalHit(
@@ -230,16 +354,17 @@ class HybridRetrievalService:
         return diversified
 
     def search_hits(self, query: str, top_k: int = 5) -> list[RetrievalHit]:
-        lexical_hits = self.lexical.search(query, top_k=max(top_k * 3, 12))
+        candidate_top_k = max(top_k * 6, 24)
+        lexical_hits = self.lexical.search(query, top_k=candidate_top_k)
         expanded_query = " ".join(self._query_expansions(query)) or query
         dense_hits = (
-            self.dense.search(expanded_query, top_k=max(top_k * 3, 12))
+            self.dense.search(expanded_query, top_k=candidate_top_k)
             if self.dense and self.dense.available
             else []
         )
         merged = self._merge_hits(query, [*lexical_hits, *dense_hits])
         if self.reranker is not None and self.reranker.is_available:
-            merged = self.reranker.rerank(expanded_query, merged, top_k=max(top_k * 4, 12))
+            merged = self.reranker.rerank(expanded_query, merged, top_k=max(top_k * 6, 24))
         merged = self._diversify_hits(merged, top_k=max(top_k * 2, 8))
         return merged[:top_k]
 

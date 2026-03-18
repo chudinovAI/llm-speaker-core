@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from llm_speaker_core.ingest.extractors.cloudflare import canonicalize_url
 from llm_speaker_core.retrieval.service import HybridRetrievalService
 from llm_speaker_core.retrieval.schemas import EvidencePack
 
@@ -17,8 +18,8 @@ def run_eval(manifest_path: Path, gold_path: Path, out_path: Path, top_k: int = 
     total_top3 = 0.0
     for row in rows:
         evidence = retriever.build_evidence_pack(row["query"], top_k=top_k)
-        expected = set(row.get("expected_sources", []))
-        found = [hit.source for hit in evidence.hits]
+        expected = {canonicalize_url(src) for src in row.get("expected_sources", []) if canonicalize_url(src)}
+        found = [canonicalize_url(hit.source) for hit in evidence.hits if canonicalize_url(hit.source)]
         recall = 1.0 if expected and any(src in found for src in expected) else 0.0
         top3 = 1.0 if expected and any(src in found[:3] for src in expected) else 0.0
         total_recall += recall

@@ -30,6 +30,7 @@ QUERY_EXPANSIONS = {
     "поступ": ("абитуриент", "прием", "приём", "баллы", "направления"),
     "направлен": ("специальности", "программы", "бакалавриат", "магистратура"),
     "специальн": ("направления", "программы", "бакалавриат", "магистратура"),
+    "программ": ("направления", "специальности", "бакалавриат", "магистратура"),
     "приемн": ("приемная", "приёмная", "комиссия", "контакты", "поступление"),
     "сведен": ("официальные", "документы", "лицензия", "аккредитация"),
     "официаль": ("сведения", "документы", "лицензия", "аккредитация"),
@@ -43,6 +44,14 @@ QUERY_EXPANSIONS = {
     "контакт": ("приемная", "комиссия", "телефон", "почта", "email"),
     "связ": ("контакты", "телефон", "почта", "email"),
     "кадр": ("отдел", "персонал", "контакты"),
+    "срок": ("даты", "прием", "приём"),
+    "дат": ("сроки", "прием", "приём"),
+    "бюдж": ("бюджетные", "места", "план"),
+    "мест": ("бюджет", "план", "прием"),
+    "объедин": ("самоуправление", "профком", "старостат"),
+    "самоуправ": ("объединения", "профком", "старостат"),
+    "врмп": ("воспитательная", "молодежная", "политика", "точка"),
+    "магистр": ("магистратура", "маг"),
     "гуап": ("университет", "аэрокосмического", "приборостроения"),
 }
 INTENT_HINTS: dict[str, tuple[str, ...]] = {
@@ -75,6 +84,19 @@ INTENT_HINTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+FACET_HINTS: dict[str, tuple[str, ...]] = {
+    "admission_directions": ("направлен", "специальн", "калькулятор", "программ", "профил"),
+    "admission_dates": ("срок", "дат"),
+    "admission_contacts": ("приемн", "приёмн", "комисси", "контакт"),
+    "admission_budget": ("бюдж", "мест"),
+    "admission_mag": ("магистр", "магистрат"),
+    "tuition_price": ("стоим", "стои", "цена", "скольк"),
+    "tuition_payment": ("оплат", "договор", "реквиз"),
+    "student_unions": ("объедин", "самоуправ", "профком", "ппоса", "старост"),
+    "dorm": ("общежит", "проживан"),
+    "vrmp": ("врмп", "точка", "кипения"),
+}
+
 
 def tokenize(text: str) -> list[str]:
     tokens = [t.lower() for t in TOKEN_RE.findall(text)]
@@ -88,3 +110,26 @@ def expand_query(tokens: list[str]) -> list[str]:
             if token.startswith(stem):
                 expanded.extend(extra)
     return expanded
+
+
+def detect_facets(text: str) -> list[str]:
+    low = text.lower()
+    expanded_tokens = expand_query(tokenize(text))
+    facets: list[str] = []
+    for facet, stems in FACET_HINTS.items():
+        if any(token.startswith(stem) for token in expanded_tokens for stem in stems):
+            facets.append(facet)
+            continue
+        if any(stem in low for stem in stems):
+            facets.append(facet)
+
+    if "admission_mag" in facets and "admission_directions" not in facets:
+        facets.append("admission_directions")
+    if "admission_contacts" in facets and "contacts" not in facets:
+        facets.append("contacts")
+    if "dorm" in facets and "location" not in facets:
+        facets.append("location")
+    if "tuition_price" in facets and "tuition_payment" in facets:
+        if any(token.startswith(("скольк", "стоим", "стои", "цена")) for token in expanded_tokens):
+            facets = [facet for facet in facets if facet != "tuition_payment"] + ["tuition_price"]
+    return sorted(set(facets))

@@ -61,6 +61,8 @@ class LexicalIndex:
             "canonical_url": chunk.canonical_url,
             "source_url": chunk.source_url,
             "published_at": chunk.published_at,
+            "page_type": chunk.metadata.get("page_type"),
+            "source_facets": list(chunk.metadata.get("source_facets", [])),
             "quality_score": chunk.quality_score,
             "quality_flags": list(chunk.quality_flags),
             "is_archived": chunk.is_archived,

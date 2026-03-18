@@ -1,15 +1,15 @@
 {"query":"Как поступить в ГУАП?","expected_sources":["https://priem.guap.ru/bach","https://priem.guap.ru/bach/rules","https://priem.guap.ru/"]}
-{"query":"Какие направления есть в ГУАП?","expected_sources":["https://priem.guap.ru/bach/calc?#bach","https://priem.guap.ru/mag"]}
+{"query":"Какие направления есть в ГУАП?","expected_sources":["https://priem.guap.ru/calc","https://priem.guap.ru/bach","https://priem.guap.ru/mag"]}
 {"query":"Какие сроки приема в ГУАП?","expected_sources":["https://priem.guap.ru/bach/dates","https://priem.guap.ru/bach"]}
 {"query":"Как связаться с приемной комиссией ГУАП?","expected_sources":["https://priem.guap.ru/contacts"]}
 {"query":"Сколько стоит обучение в ГУАП?","expected_sources":["https://guap.ru/eif/price","https://guap.ru/sveden/paid_edu","https://guap.ru/eif/pol_usl"]}
 {"query":"Как оплатить обучение в ГУАП?","expected_sources":["https://guap.ru/eif","https://guap.ru/eif/pol_usl","https://guap.ru/sveden/paid_edu"]}
 {"query":"Где находится ГУАП?","expected_sources":["https://guap.ru/sveden/common","https://guap.ru/sveden/objects"]}
 {"query":"Какие есть студенческие активности в ГУАП?","expected_sources":["https://guap.ru/studlife","https://guap.ru/studlife/cyber","https://guap.ru/studlife/evo"]}
-{"query":"Есть ли в ГУАП студенческие объединения?","expected_sources":["https://guap.ru/studlife","https://guap.ru/studlife/pposa","https://guap.ru/studlife/starsovet"]}
+{"query":"Есть ли в ГУАП студенческие объединения?","expected_sources":["https://guap.ru/studlife","https://guap.ru/studlife/pposa","https://guap.ru/studlife/starsovet","https://guap.ru/studlife/domsovet"]}
 {"query":"Какие официальные сведения опубликованы о ГУАП?","expected_sources":["https://guap.ru/sveden","https://guap.ru/sveden/common","https://guap.ru/sveden/document"]}
-{"query":"Есть ли платные образовательные услуги в ГУАП?","expected_sources":["https://guap.ru/sveden/paid_edu","https://guap.ru/eif/pol_usl"]}
-{"query":"Есть ли в ГУАП бюджетные места?","expected_sources":["https://guap.ru/sveden/budget","https://priem.guap.ru/bach"]}
+{"query":"Есть ли платные образовательные услуги в ГУАП?","expected_sources":["https://guap.ru/sveden/paid_edu","https://guap.ru/sveden/pay_edu","https://guap.ru/eif/pol_usl"]}
+{"query":"Есть ли в ГУАП бюджетные места?","expected_sources":["https://guap.ru/sveden/budget","https://priem.guap.ru/bach","https://priem.guap.ru/bach/plan"]}
 {"query":"Есть ли в ГУАП общежитие?","expected_sources":["https://guap.ru/sveden/objects","https://guap.ru/sveden/common"]}
 {"query":"Какие программы магистратуры есть в ГУАП?","expected_sources":["https://priem.guap.ru/mag"]}
 {"query":"Что такое ВРМП в ГУАП?","expected_sources":["https://guap.ru/vrmp","https://guap.ru/vrmp/tochka"]}
