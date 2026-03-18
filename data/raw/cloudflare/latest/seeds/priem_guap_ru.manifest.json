@@ -1,0 +1,7 @@
+{
+  "job_id": "ebcb2814-de12-4bc9-8e94-b116e218f2b0",
+  "start_url": "https://priem.guap.ru",
+  "status": "completed",
+  "record_count": 48,
+  "records_path": "data/raw/cloudflare/latest/seeds/priem_guap_ru.records.jsonl"
+}

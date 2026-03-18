@@ -22,6 +22,20 @@ from llm_speaker_core.ingest.quality import normalized_fingerprint, similarity_s
 from llm_speaker_core.retrieval.schemas import ChunkRecord, DocumentRecord
 
 ARCHIVE_YEAR_RE = re.compile(r"\b(20\d{2})\b")
+MARKDOWN_H1_RE = re.compile(r"(?m)^#{1,2}\s+")
+FOOTER_MARKERS = (
+    "#### почтовый адрес:",
+    "почтовый адрес:",
+    "##### приемная комиссия",
+    "## основные документы гуап",
+    "## полезные ресурсы",
+    "#### университет",
+    "отдел информационно-стратегических коммуникаций и рекламы:",
+    "отдел делопроизводства:",
+    "сведения об образовательной организации",
+    "разработка сайта",
+    "вопросы по работе сайта:",
+)
 
 
 def _content_hash(text: str) -> str:
@@ -50,12 +64,44 @@ def _extract_title(record: dict, fallback_url: str) -> str:
     return tail or parsed.netloc or "untitled"
 
 
+def _trim_header_noise(text: str, extraction_mode: str) -> str:
+    if extraction_mode != "markdown":
+        return text.strip()
+    match = MARKDOWN_H1_RE.search(text)
+    if match is None:
+        return text.strip()
+    # Drop breadcrumb/logo/nav noise before the first H1 if it is near the top.
+    if match.start() <= 2400:
+        return text[match.start() :].strip()
+    return text.strip()
+
+
+def _trim_footer_noise(text: str) -> str:
+    low = text.lower()
+    cutoff = None
+    min_offset = int(len(low) * 0.4)
+    for marker in FOOTER_MARKERS:
+        idx = low.find(marker, min_offset)
+        if idx >= min_offset and (cutoff is None or idx < cutoff):
+            cutoff = idx
+    if cutoff is None:
+        return text.strip()
+    return text[:cutoff].strip()
+
+
+def clean_extracted_text(text: str, extraction_mode: str) -> str:
+    cleaned = _trim_header_noise(text, extraction_mode)
+    cleaned = _trim_footer_noise(cleaned)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
 def document_from_cloudflare_record(record: dict, crawl_job_id: str | None = None) -> DocumentRecord | None:
     source_url = str(record.get("url") or record.get("sourceURL") or "").strip()
     if not source_url:
         return None
     canonical_url = canonicalize_url(source_url)
     text, extraction_mode = extract_primary_text(record)
+    text = clean_extracted_text(text, extraction_mode)
     title = _extract_title(record, canonical_url)
     doc_id = f"web:{_content_hash(canonical_url)}"
     years = [int(y) for y in ARCHIVE_YEAR_RE.findall(text)]
@@ -136,6 +182,7 @@ def parse_document_file(path: Path) -> tuple[str, str, bool]:
 
 def normalize_downloaded_document(path: Path, source_url: str) -> DocumentRecord:
     text, extraction_mode, needs_ocr = parse_document_file(path)
+    text = clean_extracted_text(text, extraction_mode)
     canonical_url = canonicalize_url(source_url)
     doc = DocumentRecord(
         doc_id=f"doc:{_content_hash(str(path.resolve()))}",
@@ -156,6 +203,21 @@ def normalize_downloaded_document(path: Path, source_url: str) -> DocumentRecord
         needs_ocr=needs_ocr,
     )
     return assess_document_quality(doc)
+
+
+def load_manual_documents(root: Path) -> list[DocumentRecord]:
+    documents: list[DocumentRecord] = []
+    if not root.exists():
+        return documents
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in {".pdf", ".docx", ".txt"}:
+            continue
+        relative = path.relative_to(root).as_posix()
+        source_url = f"manual://{relative}"
+        documents.append(normalize_downloaded_document(path, source_url))
+    return documents
 
 
 def write_documents(path: Path, documents: list[DocumentRecord]) -> None:

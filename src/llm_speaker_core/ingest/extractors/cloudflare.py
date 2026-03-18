@@ -9,7 +9,15 @@ def canonicalize_url(url: str) -> str:
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"}:
         return ""
-    path = parsed.path.rstrip("/") or "/"
+    raw_segments = [segment for segment in parsed.path.split("/") if segment]
+    normalized_segments: list[str] = []
+    for segment in raw_segments:
+        if segment in {"m", "c"}:
+            continue
+        if normalized_segments and normalized_segments[-1] == segment:
+            continue
+        normalized_segments.append(segment)
+    path = f"/{'/'.join(normalized_segments)}" if normalized_segments else "/"
     return parsed._replace(path=path, query="", fragment="").geturl()
 
 

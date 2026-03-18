@@ -1,0 +1,7 @@
+{
+  "job_id": "343cb108-69cc-443a-af12-77a0367ffe8a",
+  "start_url": "https://guap.ru",
+  "status": "completed",
+  "record_count": 86,
+  "records_path": "data/raw/cloudflare/latest/seeds/guap_ru.records.jsonl"
+}

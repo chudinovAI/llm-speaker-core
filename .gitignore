@@ -12,6 +12,15 @@ dist/
 wheels/
 artifacts/
 data/*
+!data/raw/
+data/raw/*
+!data/raw/cloudflare/
+!data/raw/manual_docs/
+!data/raw/cloudflare/**
+!data/raw/manual_docs/**
+!data/eval/
+data/eval/*
+!data/eval/gold_queries.jsonl
 !data/index_manifest.json
 !data/normalized/
 data/normalized/*

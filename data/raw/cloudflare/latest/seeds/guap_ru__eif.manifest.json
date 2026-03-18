@@ -1,0 +1,7 @@
+{
+  "job_id": "a96cc47c-5809-4f56-8358-d0137096a51e",
+  "start_url": "https://guap.ru/eif",
+  "status": "completed",
+  "record_count": 96,
+  "records_path": "data/raw/cloudflare/latest/seeds/guap_ru__eif.records.jsonl"
+}

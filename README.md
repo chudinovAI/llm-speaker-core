@@ -7,6 +7,7 @@
 ## Setup
 
 git pull
+git lfs pull
 conda create -n llm-speaker python=3.11 -y
 conda activate llm-speaker
 uv sync

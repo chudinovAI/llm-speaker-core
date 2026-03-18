@@ -1,0 +1,7 @@
+{
+  "job_id": "8041a0ba-ed47-4414-93c0-dde0531291c7",
+  "start_url": "https://guap.ru/vrmp",
+  "status": "completed",
+  "record_count": 92,
+  "records_path": "data/raw/cloudflare/latest/seeds/guap_ru__vrmp.records.jsonl"
+}

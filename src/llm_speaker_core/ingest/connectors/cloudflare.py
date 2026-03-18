@@ -89,7 +89,8 @@ class CloudflareCrawlerClient:
                 if retry_after_raw.isdigit():
                     wait_s = max(wait_s, float(retry_after_raw))
                 print(
-                    f"[Cloudflare] rate limited on {method} {path or 'crawl'}; retry in {wait_s:.0f}s"
+                    f"[Cloudflare] rate limited on {method} {path or 'crawl'}; retry in {wait_s:.0f}s",
+                    flush=True,
                 )
                 time.sleep(wait_s)
                 attempt += 1
@@ -134,7 +135,7 @@ class CloudflareCrawlerClient:
             result = self.get_job(job_id, limit=1)
             status = str(result.get("status", "unknown"))
             if status != last_status:
-                print(f"[Cloudflare] job={job_id} status={status}")
+                print(f"[Cloudflare] job={job_id} status={status}", flush=True)
                 last_status = status
             if status in TERMINAL_STATUSES:
                 return result
@@ -308,7 +309,9 @@ def main() -> None:
     parser.add_argument("--poll-interval", type=float, default=5.0)
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--seed-cooldown", type=float, default=30.0)
-    parser.add_argument("--existing-job-id", default="")
+    parser.add_argument("--poll-job-id", default="")
+    parser.add_argument("--export-job-id", default="")
+    parser.add_argument("--start-only", action="store_true")
     parser.add_argument("--rebuild-only", action="store_true")
     args = parser.parse_args()
 
@@ -346,18 +349,38 @@ def main() -> None:
         )
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
-    if args.existing_job_id:
-        final_result = client.wait_until_done(args.existing_job_id)
+    if args.poll_job_id:
+        result = client.get_job(args.poll_job_id, limit=1)
+        print(
+            json.dumps(
+                {
+                    "job_id": args.poll_job_id,
+                    "status": result.get("status"),
+                    "records": result.get("total_records"),
+                    "pages_crawled": result.get("pages_crawled"),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            flush=True,
+        )
+        return
+    if args.export_job_id:
+        print(
+            f"[Cloudflare] exporting existing job={args.export_job_id} seed={start_urls[0]}",
+            flush=True,
+        )
+        final_result = client.wait_until_done(args.export_job_id)
         if str(final_result.get("status")) != "completed":
             raise SystemExit(
                 f"Crawl finished with non-completed status: {final_result.get('status')}"
             )
-        records = client.fetch_all_completed_records(args.existing_job_id)
+        records = client.fetch_all_completed_records(args.export_job_id)
         all_records.extend(records)
         save_seed_artifacts(
             config,
             start_urls[0],
-            args.existing_job_id,
+            args.export_job_id,
             final_result,
             records,
         )
@@ -368,9 +391,17 @@ def main() -> None:
         )
     else:
         for start_url in start_urls:
-            print(f"[Cloudflare] starting crawl for {start_url}")
+            print(f"[Cloudflare] starting crawl for {start_url}", flush=True)
             job_id = client.start_job(start_url)
-            print(f"[Cloudflare] job={job_id} seed={start_url}")
+            print(
+                json.dumps(
+                    {"job_id": job_id, "start_url": start_url, "action": "started"},
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+            if args.start_only:
+                continue
             final_result = client.wait_until_done(job_id)
             if str(final_result.get("status")) != "completed":
                 raise SystemExit(
@@ -393,12 +424,15 @@ def main() -> None:
                 _dedupe_records(load_saved_seed_records(config.raw_dir)),
             )
             print(
-                f"[Cloudflare] cooldown before next seed: {config.seed_cooldown_sec:.0f}s"
+                f"[Cloudflare] cooldown before next seed: {config.seed_cooldown_sec:.0f}s",
+                flush=True,
             )
             time.sleep(config.seed_cooldown_sec)
+        if args.start_only:
+            return
     payload = save_raw_artifacts(
         config,
         load_saved_seed_jobs(config.raw_dir),
         _dedupe_records(load_saved_seed_records(config.raw_dir) or all_records),
     )
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)

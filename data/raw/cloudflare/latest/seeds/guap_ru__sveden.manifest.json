@@ -1,0 +1,7 @@
+{
+  "job_id": "aad0f024-a9ee-4705-84b1-61e9d9d74f66",
+  "start_url": "https://guap.ru/sveden",
+  "status": "completed",
+  "record_count": 97,
+  "records_path": "data/raw/cloudflare/latest/seeds/guap_ru__sveden.records.jsonl"
+}

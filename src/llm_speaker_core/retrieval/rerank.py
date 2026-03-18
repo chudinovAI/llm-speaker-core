@@ -8,9 +8,19 @@ from llm_speaker_core.retrieval.schemas import RetrievalHit
 from llm_speaker_core.utils.text import tokenize
 
 try:
-    from sentence_transformers import CrossEncoder
+    from FlagEmbedding import FlagReranker
 except Exception:  # noqa: BLE001
-    CrossEncoder = None  # type: ignore[assignment,misc]
+    FlagReranker = None  # type: ignore[assignment,misc]
+
+try:
+    from huggingface_hub import snapshot_download
+except Exception:  # noqa: BLE001
+    snapshot_download = None  # type: ignore[assignment,misc]
+
+try:
+    import torch
+except Exception:  # noqa: BLE001
+    torch = None  # type: ignore[assignment,misc]
 
 
 @dataclass
@@ -19,22 +29,38 @@ class CrossEncoderReranker:
 
     def __post_init__(self) -> None:
         self._model = None
-        if CrossEncoder is not None:
+        if FlagReranker is not None:
             try:
-                self._model = CrossEncoder(self.model_name, local_files_only=True)
+                local_path = self._resolve_local_model_path(self.model_name)
+                use_fp16 = bool(torch is not None and torch.cuda.is_available())
+                self._model = FlagReranker(
+                    local_path,
+                    use_fp16=use_fp16,
+                    trust_remote_code=False,
+                )
             except Exception:  # noqa: BLE001
                 self._model = None
+        self.is_available = self._model is not None
+
+    @staticmethod
+    def _resolve_local_model_path(model_name: str) -> str:
+        if snapshot_download is None:
+            return model_name
+        try:
+            return str(snapshot_download(repo_id=model_name, local_files_only=True))
+        except Exception:  # noqa: BLE001
+            return model_name
 
     def rerank(self, query: str, hits: list[RetrievalHit], top_k: int) -> list[RetrievalHit]:
         if not hits:
             return []
         if self._model is not None:
             pairs = [[query, hit.text] for hit in hits]
-            raw_scores = self._model.predict(pairs)
-            if hasattr(raw_scores, "tolist"):
-                scores = cast(list[float], raw_scores.tolist())
-            else:
+            raw_scores = self._model.compute_score(pairs)
+            if isinstance(raw_scores, list):
                 scores = [float(score) for score in raw_scores]
+            else:
+                scores = [float(cast(float, raw_scores))]
         else:
             q_tokens = set(tokenize(query))
             scores = []

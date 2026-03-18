@@ -141,7 +141,7 @@ class GenerationResult:
     evidence_coverage: float
     answer_mode: str
     latency_ms: int
-    retrieval_version: str = "hybrid-rag-v2"
+    retrieval_version: str = "hybrid-rag-v3"
     evidence_count: int = 0
     grounding_score: float = 0.0
 
@@ -845,7 +845,7 @@ class LLMService:
         answer_mode = "grounded"
         if "нет точных подтвержденных данных" in display_text.lower():
             answer_mode = "uncertain"
-        retrieval_version = getattr(self.rag, "version", "hybrid-rag-v2")
+        retrieval_version = getattr(self.rag, "version", "hybrid-rag-v3")
         grounding_score = round(
             sum(float(chunk.get("score", 0.0)) for chunk in rag_chunks)
             / max(len(rag_chunks), 1),

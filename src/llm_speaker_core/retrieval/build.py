@@ -4,7 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
-from llm_speaker_core.ingest.normalize import build_chunk_corpus, load_cloudflare_documents, write_chunks, write_documents
+from llm_speaker_core.ingest.normalize import (
+    build_chunk_corpus,
+    load_cloudflare_documents,
+    load_manual_documents,
+    write_chunks,
+    write_documents,
+)
 from llm_speaker_core.retrieval.service import HybridRetrievalService
 
 
@@ -17,8 +23,11 @@ def build_hybrid_index(
     dense_out: Path,
     embedding_model: str,
     reranker_model: str,
+    manual_docs_dir: Path | None = None,
 ) -> dict:
     documents = load_cloudflare_documents(raw_records)
+    if manual_docs_dir is not None:
+        documents.extend(load_manual_documents(manual_docs_dir))
     chunks = build_chunk_corpus(documents)
     write_documents(documents_out, documents)
     write_chunks(chunks_out, chunks)
@@ -48,6 +57,7 @@ def main() -> None:
     parser.add_argument("--dense-out", type=Path, default=Path("data/indexes/faiss/index.json"))
     parser.add_argument("--embedding-model", default="BAAI/bge-m3")
     parser.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
+    parser.add_argument("--manual-docs-dir", type=Path, default=Path("data/raw/manual_docs"))
     args = parser.parse_args()
     report = build_hybrid_index(
         raw_records=args.raw_records,
@@ -58,6 +68,7 @@ def main() -> None:
         dense_out=args.dense_out,
         embedding_model=args.embedding_model,
         reranker_model=args.reranker_model,
+        manual_docs_dir=args.manual_docs_dir,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

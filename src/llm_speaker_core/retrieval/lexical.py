@@ -52,6 +52,21 @@ class LexicalIndex:
             avg_doc_len=avg_doc_len,
         )
 
+    @staticmethod
+    def _chunk_metadata(chunk: ChunkRecord) -> dict[str, object]:
+        return {
+            "section_path": list(chunk.section_path),
+            "title": chunk.title,
+            "section": chunk.section,
+            "canonical_url": chunk.canonical_url,
+            "source_url": chunk.source_url,
+            "published_at": chunk.published_at,
+            "quality_score": chunk.quality_score,
+            "quality_flags": list(chunk.quality_flags),
+            "is_archived": chunk.is_archived,
+            "is_low_signal": chunk.is_low_signal,
+        }
+
     def search(self, query: str, top_k: int = 8) -> list[RetrievalHit]:
         query_tokens = self.expand_query(self.tokenize(query))
         if not query_tokens:
@@ -91,7 +106,7 @@ class LexicalIndex:
                     text=chunk.text,
                     score=round(score, 6),
                     retrieval_stage="lexical",
-                    metadata={"section_path": list(chunk.section_path)},
+                    metadata=self._chunk_metadata(chunk),
                 )
             )
         return hits
