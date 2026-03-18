@@ -298,3 +298,43 @@ def test_hybrid_search_prefers_student_unions_over_generic_clubs() -> None:
         "https://guap.ru/studlife/starsovet",
     }
     assert "https://guap.ru/studlife/cyber" not in {hit["source"] for hit in hits[:2]}
+
+
+def test_hybrid_search_prefers_payment_pages_over_price_for_payment_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Оплата обучения и проживания в общежитиях. Реквизиты и порядок оплаты.",
+            "https://guap.ru/eif/pay",
+            "eif",
+            title="Оплата обучения и проживания",
+            metadata={"page_type": "detail", "source_facets": ["tuition", "tuition_payment"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Приказы о стоимости обучения. Цены и тарифы по программам.",
+            "https://guap.ru/eif/price",
+            "eif",
+            title="Приказы о стоимости обучения",
+            metadata={"page_type": "detail", "source_facets": ["tuition", "tuition_price"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="payment",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-18T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Как оплатить обучение в ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/eif/pay"

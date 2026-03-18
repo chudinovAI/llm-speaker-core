@@ -87,13 +87,13 @@ def _classify_source_facets(doc: DocumentRecord) -> list[str]:
         or "стоимость обучения" in low_text
     ):
         facets.add("tuition_price")
-    if path.endswith("/pay") or path.endswith("/pol_usl") or path.endswith("/inf_dog") or "оплата обучения" in low_text:
+    if path.endswith("/pay") or path.endswith("/pol_usl") or path.endswith("/inf_dog") or "оплата обучения" in low_title:
         facets.add("tuition_payment")
     if path.startswith("/sveden"):
         facets.add("official_info")
     if path.endswith("/common") or "адрес" in low_title:
         facets.add("location")
-    if path.endswith("/objects") or "общежит" in low_title or "общежит" in low_text:
+    if path.endswith("/objects") or "общежит" in low_title:
         facets.add("dorm")
         facets.add("location")
     if path.startswith("/studlife"):

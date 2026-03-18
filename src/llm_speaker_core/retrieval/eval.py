@@ -16,14 +16,21 @@ def run_eval(manifest_path: Path, gold_path: Path, out_path: Path, top_k: int = 
     results = []
     total_recall = 0.0
     total_top3 = 0.0
+    total_top1 = 0.0
+    total_mrr = 0.0
     for row in rows:
         evidence = retriever.build_evidence_pack(row["query"], top_k=top_k)
         expected = {canonicalize_url(src) for src in row.get("expected_sources", []) if canonicalize_url(src)}
         found = [canonicalize_url(hit.source) for hit in evidence.hits if canonicalize_url(hit.source)]
         recall = 1.0 if expected and any(src in found for src in expected) else 0.0
+        top1 = 1.0 if expected and any(src in found[:1] for src in expected) else 0.0
         top3 = 1.0 if expected and any(src in found[:3] for src in expected) else 0.0
+        first_relevant_rank = next((idx + 1 for idx, src in enumerate(found) if src in expected), None)
+        mrr = 1.0 / first_relevant_rank if first_relevant_rank else 0.0
         total_recall += recall
+        total_top1 += top1
         total_top3 += top3
+        total_mrr += mrr
         results.append(
             {
                 "query": row["query"],
@@ -31,13 +38,18 @@ def run_eval(manifest_path: Path, gold_path: Path, out_path: Path, top_k: int = 
                 "found_sources": found,
                 "grounding_score": evidence.grounding_score,
                 "recall_at_k": recall,
+                "top1_hit": top1,
                 "top3_hit": top3,
+                "first_relevant_rank": first_relevant_rank,
+                "mrr": round(mrr, 4),
             }
         )
     payload = {
         "queries": len(rows),
         "recall_at_k": round(total_recall / max(len(rows), 1), 4),
+        "top1_hit_rate": round(total_top1 / max(len(rows), 1), 4),
         "top3_hit_rate": round(total_top3 / max(len(rows), 1), 4),
+        "mrr": round(total_mrr / max(len(rows), 1), 4),
         "results": results,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

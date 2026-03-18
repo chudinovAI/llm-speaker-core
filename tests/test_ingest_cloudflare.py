@@ -48,3 +48,24 @@ def test_document_from_cloudflare_record_trims_header_and_footer_noise() -> None
     assert "Почтовый адрес" not in doc.text
     assert "Разработка сайта" not in doc.text
     assert "is_low_priority_source" in doc.quality_flags
+
+
+def test_document_from_cloudflare_record_trims_priem_footer_sections() -> None:
+    record = {
+        "url": "https://priem.guap.ru/bach/plan",
+        "title": "Количество мест для приема",
+        "markdown": (
+            "# Количество мест для приема\n\n"
+            "Информация о количестве мест для приема на обучение.\n\n"
+            "## Основные документы ГУАП\n\n"
+            "* [Лицензия](https://guap.ru/sveden/common)\n\n"
+            "## Полезные ресурсы\n\n"
+            "* [Как нас найти?](https://priem.guap.ru/contacts)\n"
+        ),
+    }
+
+    doc = document_from_cloudflare_record(record, crawl_job_id="job-3")
+
+    assert doc is not None
+    assert "Основные документы ГУАП" not in doc.text
+    assert "Как нас найти?" not in doc.text

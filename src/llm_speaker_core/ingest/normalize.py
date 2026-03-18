@@ -36,6 +36,10 @@ FOOTER_MARKERS = (
     "разработка сайта",
     "вопросы по работе сайта:",
 )
+EARLY_FOOTER_MARKERS = (
+    "## основные документы гуап",
+    "## полезные ресурсы",
+)
 
 
 def _content_hash(text: str) -> str:
@@ -80,6 +84,11 @@ def _trim_footer_noise(text: str) -> str:
     low = text.lower()
     cutoff = None
     min_offset = int(len(low) * 0.4)
+    early_min_offset = min(320, max(0, len(low) // 4))
+    for marker in EARLY_FOOTER_MARKERS:
+        idx = low.find(marker, early_min_offset)
+        if idx >= early_min_offset and (cutoff is None or idx < cutoff):
+            cutoff = idx
     for marker in FOOTER_MARKERS:
         idx = low.find(marker, min_offset)
         if idx >= min_offset and (cutoff is None or idx < cutoff):
