@@ -229,6 +229,56 @@ def load_manual_documents(root: Path) -> list[DocumentRecord]:
     return documents
 
 
+def load_firecrawl_documents(root: Path) -> list[DocumentRecord]:
+    documents: list[DocumentRecord] = []
+    if not root.exists():
+        return documents
+
+    manifest_path = root / "firecrawl_manifest.json"
+    manifest_entries: list[dict] = []
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_entries = list(manifest.get("entries", []))
+
+    for entry in manifest_entries:
+        file_name = str(entry.get("file_name", "")).strip()
+        source_url = str(entry.get("source_url", "")).strip()
+        if not file_name or not source_url:
+            continue
+        path = root / file_name
+        if not path.exists() or not path.is_file():
+            continue
+        doc = normalize_downloaded_document(path, source_url)
+        doc.source_type = "firecrawl"
+        doc.metadata["file_name"] = file_name
+        doc.metadata["ingest_source"] = "firecrawl"
+        documents.append(doc)
+    return documents
+
+
+def dedupe_documents(documents: list[DocumentRecord]) -> list[DocumentRecord]:
+    seen_urls: set[str] = set()
+    seen_fingerprints: set[str] = set()
+    seen_signatures: set[str] = set()
+    deduped: list[DocumentRecord] = []
+    for doc in documents:
+        canonical = canonicalize_url(doc.canonical_url or doc.source_url)
+        if canonical in seen_urls:
+            doc.is_duplicate = True
+            doc.quality_score = min(doc.quality_score, 0.1)
+        elif is_near_duplicate(doc.text, seen_fingerprints, seen_signatures):
+            doc.is_duplicate = True
+            doc.quality_score = min(doc.quality_score, 0.1)
+        else:
+            seen_urls.add(canonical)
+            seen_fingerprints.add(normalized_fingerprint(doc.text))
+            signature = similarity_signature(doc.text)
+            if signature:
+                seen_signatures.add(signature)
+        deduped.append(doc)
+    return deduped
+
+
 def write_documents(path: Path, documents: list[DocumentRecord]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:

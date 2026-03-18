@@ -1,0 +1,133 @@
+{
+  "source": "firecrawl",
+  "selected_files": [
+    "docs.guap.ru-pr_guap_05-386-24.pdf.md",
+    "docs.guap.ru-sveden-struct-pols-lib.pdf.md",
+    "docs.guap.ru-sveden-struct-pols-up.pdf.md",
+    "docs.guap.ru-sveden-struct-pols-up_okr.pdf.md",
+    "guap.ru-c-osvr-line-family.md",
+    "guap.ru-c-osvr-line-gos_soc_stip.md",
+    "guap.ru-c-osvr-line-inclusive.md",
+    "guap.ru-dom-2.md",
+    "guap.ru-empbook.md",
+    "guap.ru-med-struct.md",
+    "guap.ru-ooup.md",
+    "guap.ru-osvr-line-help.md",
+    "guap.ru-osvr-line-social.md",
+    "guap.ru-umo.md",
+    "guap.ru-uprod-orasp.md",
+    "lib.guap.ru-jirbis2-index.php.md",
+    "lib.guap.ru.md",
+    "new.guap.ru-f06-contacts.md",
+    "new.guap.ru-i01-contacts.md",
+    "new.guap.ru-i02-contacts.md",
+    "new.guap.ru-i04-contacts.md",
+    "new.guap.ru-i08-contacts.md",
+    "new.guap.ru-iibmp-contacts.md"
+  ],
+  "excluded_files": {
+    "guap.ru-rasp.md": "too noisy: full schedule directory dump",
+    "crawl-library.json": "crawl job did not finalize into local output yet",
+    "new.guap.ru contact pages not yet deduplicated by institute names": "kept because they add dean/faculty contacts missing from Cloudflare corpus"
+  },
+  "notes": [
+    "Cloudflare duplicate URLs were filtered before choosing search targets.",
+    "guap.ru/rasp is intentionally excluded from indexing due to extreme noise and low precision for voice retrieval.",
+    "Library pages were scraped individually because the full library crawl did not produce a local output file yet.",
+    "Added Firecrawl faculty/dean contact pages and medical center pages after duplicate filtering against Cloudflare URLs."
+  ],
+  "entries": [
+    {
+      "file_name": "docs.guap.ru-pr_guap_05-386-24.pdf.md",
+      "source_url": "https://docs.guap.ru/pr_guap_05-386-24.pdf"
+    },
+    {
+      "file_name": "docs.guap.ru-sveden-struct-pols-lib.pdf.md",
+      "source_url": "https://docs.guap.ru/sveden/struct/pols/lib.pdf"
+    },
+    {
+      "file_name": "docs.guap.ru-sveden-struct-pols-up.pdf.md",
+      "source_url": "https://docs.guap.ru/sveden/struct/pols/up.pdf"
+    },
+    {
+      "file_name": "docs.guap.ru-sveden-struct-pols-up_okr.pdf.md",
+      "source_url": "https://docs.guap.ru/sveden/struct/pols/up_okr.pdf"
+    },
+    {
+      "file_name": "guap.ru-c-osvr-line-family.md",
+      "source_url": "https://guap.ru/c/osvr/line/family"
+    },
+    {
+      "file_name": "guap.ru-c-osvr-line-gos_soc_stip.md",
+      "source_url": "https://guap.ru/c/osvr/line/gos_soc_stip"
+    },
+    {
+      "file_name": "guap.ru-c-osvr-line-inclusive.md",
+      "source_url": "https://guap.ru/c/osvr/line/inclusive"
+    },
+    {
+      "file_name": "guap.ru-dom-2.md",
+      "source_url": "https://guap.ru/dom/2"
+    },
+    {
+      "file_name": "guap.ru-empbook.md",
+      "source_url": "https://guap.ru/empbook"
+    },
+    {
+      "file_name": "guap.ru-med-struct.md",
+      "source_url": "https://guap.ru/med/struct"
+    },
+    {
+      "file_name": "guap.ru-ooup.md",
+      "source_url": "https://guap.ru/ooup"
+    },
+    {
+      "file_name": "guap.ru-osvr-line-help.md",
+      "source_url": "https://guap.ru/osvr/line/help"
+    },
+    {
+      "file_name": "guap.ru-osvr-line-social.md",
+      "source_url": "https://guap.ru/osvr/line/social"
+    },
+    {
+      "file_name": "guap.ru-umo.md",
+      "source_url": "https://guap.ru/umo"
+    },
+    {
+      "file_name": "guap.ru-uprod-orasp.md",
+      "source_url": "https://guap.ru/uprod/orasp"
+    },
+    {
+      "file_name": "lib.guap.ru.md",
+      "source_url": "http://lib.guap.ru/"
+    },
+    {
+      "file_name": "lib.guap.ru-jirbis2-index.php.md",
+      "source_url": "https://lib.guap.ru/jirbis2/index.php?option=com_content&view=article&id=28:elektronnye-resursy-biblioteki&catid=2:static&Itemid=488"
+    },
+    {
+      "file_name": "new.guap.ru-f06-contacts.md",
+      "source_url": "https://new.guap.ru/f06/contacts"
+    },
+    {
+      "file_name": "new.guap.ru-i01-contacts.md",
+      "source_url": "https://new.guap.ru/i01/contacts"
+    },
+    {
+      "file_name": "new.guap.ru-i02-contacts.md",
+      "source_url": "https://new.guap.ru/i02/contacts"
+    },
+    {
+      "file_name": "new.guap.ru-i04-contacts.md",
+      "source_url": "https://new.guap.ru/i04/contacts"
+    },
+    {
+      "file_name": "new.guap.ru-i08-contacts.md",
+      "source_url": "https://new.guap.ru/i08/contacts"
+    },
+    {
+      "file_name": "new.guap.ru-iibmp-contacts.md",
+      "source_url": "https://new.guap.ru/iibmp/contacts"
+    }
+  ]
+}

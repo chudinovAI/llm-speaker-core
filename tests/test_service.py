@@ -81,15 +81,25 @@ class StubRetrieval:
         return ["general"]
 
 
-def _doc(source: str, text: str, *, doc_id: str = "web:1") -> dict:
-    return {
+def _doc(
+    source: str,
+    text: str,
+    *,
+    doc_id: str = "web:1",
+    title: str = "ГУАП",
+    metadata: dict | None = None,
+) -> dict:
+    payload = {
         "id": doc_id,
         "doc_id": doc_id,
         "source": source,
         "source_type": "web",
-        "title": "ГУАП",
+        "title": title,
         "text": text,
     }
+    if metadata:
+        payload.update(metadata)
+    return payload
 
 
 def test_service_limits_and_memory() -> None:
@@ -197,3 +207,78 @@ def test_admission_low_evidence_uses_rule_summary() -> None:
     result = service.handle_query("Какие направления есть в ГУАПе?", "s7")
 
     assert "проверьте актуальные правила и сроки" in result.display_text.lower()
+
+
+def test_general_query_with_irrelevant_science_sources_becomes_uncertain() -> None:
+    rag = StubRetrieval(
+        [
+            _doc(
+                "https://guap.ru/science/sciact-projects",
+                (
+                    "Разработанные методы планирования трафика позволяют составлять "
+                    "расписание для узлов сети."
+                ),
+                title="Научные проекты",
+                metadata={"source_facets": [], "page_type": "detail"},
+            ),
+            _doc(
+                "https://guap.ru/pubs/25195",
+                "В публикации рассматривается планирование трафика и расписание отправки данных.",
+                doc_id="web:2",
+                title="Публикации",
+                metadata={"source_facets": [], "page_type": "document"},
+            ),
+        ]
+    )
+    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+
+    result = service.handle_query("Расскажи про расписание библиотеки.", "s8")
+
+    assert result.answer_mode == "uncertain"
+    assert "нет точных подтвержденных данных" in result.display_text.lower()
+    assert result.grounding_score < 0.2
+
+
+def test_general_query_with_supported_facet_remains_grounded() -> None:
+    rag = StubRetrieval(
+        [
+            _doc(
+                "https://guap.ru/vrmp/tochka",
+                "Точка кипения и ВРМП координируют молодежные проекты и инициативы ГУАП.",
+                title="ВРМП",
+                metadata={"source_facets": ["vrmp"], "page_type": "profile"},
+            )
+        ]
+    )
+    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+
+    result = service.handle_query("Что такое ВРМП в ГУАП?", "s9")
+
+    assert result.answer_mode == "grounded"
+    assert "нет точных подтвержденных данных" not in result.display_text.lower()
+
+
+def test_contacts_operational_query_without_contact_sources_becomes_uncertain() -> None:
+    rag = StubRetrieval(
+        [
+            _doc(
+                "https://guap.ru/sgo",
+                "Отдел взаимодействует с сотрудниками и публикует внутренние новости.",
+                title="СГО",
+                metadata={"source_facets": [], "page_type": "detail"},
+            ),
+            _doc(
+                "https://guap.ru/it/struct/oib",
+                "Подразделение обеспечивает безопасность и внутренние коммуникации.",
+                doc_id="web:2",
+                title="Информационная безопасность",
+                metadata={"source_facets": [], "page_type": "detail"},
+            ),
+        ]
+    )
+    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+
+    result = service.handle_query("А какое расписание отдела кадров?", "s10")
+
+    assert result.answer_mode == "uncertain"
+    assert "нет точных подтвержденных данных" in result.display_text.lower()

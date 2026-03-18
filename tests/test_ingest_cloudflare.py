@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from llm_speaker_core.ingest.extractors.cloudflare import canonicalize_url
-from llm_speaker_core.ingest.normalize import document_from_cloudflare_record
+from llm_speaker_core.ingest.normalize import (
+    dedupe_documents,
+    document_from_cloudflare_record,
+    load_firecrawl_documents,
+)
 
 
 def test_canonicalize_url_normalizes_mobile_and_content_mirrors() -> None:
@@ -69,3 +76,47 @@ def test_document_from_cloudflare_record_trims_priem_footer_sections() -> None:
     assert doc is not None
     assert "Основные документы ГУАП" not in doc.text
     assert "Как нас найти?" not in doc.text
+
+
+def test_load_firecrawl_documents_reads_manifest_and_sets_urls(tmp_path: Path) -> None:
+    root = tmp_path / "firecrawl"
+    root.mkdir()
+    (root / "sample.md").write_text("# Отдел\nКонтакты и часы работы.", encoding="utf-8")
+    (root / "firecrawl_manifest.json").write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "file_name": "sample.md",
+                        "source_url": "https://guap.ru/example/contacts",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    docs = load_firecrawl_documents(root)
+
+    assert len(docs) == 1
+    assert docs[0].source_type == "firecrawl"
+    assert docs[0].canonical_url == "https://guap.ru/example/contacts"
+    assert docs[0].metadata["ingest_source"] == "firecrawl"
+
+
+def test_dedupe_documents_marks_cross_source_duplicates() -> None:
+    first = document_from_cloudflare_record(
+        {"url": "https://guap.ru/example", "markdown": "# Заголовок\nОдинаковый текст для проверки."}
+    )
+    second = document_from_cloudflare_record(
+        {"url": "https://guap.ru/example?x=1", "markdown": "# Заголовок\nОдинаковый текст для проверки."}
+    )
+    assert first is not None
+    assert second is not None
+
+    docs = dedupe_documents([first, second])
+
+    assert len(docs) == 2
+    assert docs[0].is_duplicate is False
+    assert docs[1].is_duplicate is True

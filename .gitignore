@@ -16,8 +16,10 @@ data/*
 data/raw/*
 !data/raw/cloudflare/
 !data/raw/manual_docs/
+!data/raw/firecrawl/
 !data/raw/cloudflare/**
 !data/raw/manual_docs/**
+!data/raw/firecrawl/**
 !data/eval/
 data/eval/*
 !data/eval/gold_queries.jsonl
@@ -32,3 +34,4 @@ data/indexes/*
 guap_docs/
 runtime/
 *.wav
+.firecrawl/

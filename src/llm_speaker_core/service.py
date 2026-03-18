@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from llm_speaker_core.settings import SETTINGS
-from llm_speaker_core.utils.text import expand_query, tokenize
+from llm_speaker_core.utils.text import detect_facets, expand_query, tokenize
 
 logger = logging.getLogger(__name__)
 SPEAKER_STOPWORDS = {
@@ -29,6 +29,42 @@ FACT_TOKENS_BY_INTENT = {
     "location": {"адрес", "корпус", "кампус"},
     "admission": {"баллы", "абитуриент", "документы", "направления", "поступление"},
 }
+LOW_SIGNAL_QUERY_STEMS = (
+    "гуап",
+    "универ",
+    "инстит",
+    "санкт",
+    "петер",
+    "расска",
+    "подска",
+    "информ",
+    "подроб",
+    "официа",
+    "данн",
+    "вопрос",
+    "ответ",
+    "работ",
+    "режим",
+    "час",
+    "врем",
+    "распис",
+)
+STRICT_FACETS = {
+    "admission_dates",
+    "admission_contacts",
+    "tuition_price",
+    "tuition_payment",
+    "student_unions",
+    "dorm",
+    "vrmp",
+}
+LOW_TRUST_OPERATIONAL_SOURCE_HINTS = (
+    "/science/",
+    "/pubs/",
+    "/targets/",
+    "/mission",
+    "/search",
+)
 
 
 @dataclass(frozen=True)
@@ -402,6 +438,171 @@ class LLMService:
         coverage = len(query_tokens & ctx_tokens) / max(len(query_tokens), 1)
         return round(coverage, 4)
 
+    def _extract_query_anchors(self, text: str) -> list[str]:
+        anchors: list[str] = []
+        for token in tokenize(text):
+            if len(token) < 4:
+                continue
+            if any(token.startswith(stem) for stem in LOW_SIGNAL_QUERY_STEMS):
+                continue
+            anchors.append(token)
+        return anchors
+
+    def _tokens_stem_match(self, left: str, right: str) -> bool:
+        common = min(len(left), len(right), 5)
+        return common >= 4 and left[:common] == right[:common]
+
+    def _estimate_anchor_support(self, text: str, rag_chunks: list[dict]) -> float:
+        anchors = self._extract_query_anchors(text)
+        if not anchors:
+            return 1.0
+
+        matched: set[str] = set()
+        for chunk in rag_chunks[:3]:
+            structural_text = " ".join(
+                [
+                    str(chunk.get("source", "")),
+                    str(chunk.get("title", "")),
+                    str(chunk.get("section", "")),
+                    " ".join(str(part) for part in chunk.get("section_path", [])),
+                    " ".join(str(part) for part in chunk.get("source_facets", [])),
+                    str(chunk.get("text", ""))[:600],
+                ]
+            )
+            structural_tokens = tokenize(structural_text)
+            for anchor in anchors:
+                if any(
+                    self._tokens_stem_match(anchor, token)
+                    for token in structural_tokens
+                ):
+                    matched.add(anchor)
+        return round(len(matched) / max(len(anchors), 1), 4)
+
+    def _estimate_facet_support(self, text: str, rag_chunks: list[dict]) -> float:
+        query_facets = set(detect_facets(text))
+        if not query_facets:
+            return 0.0
+
+        source_facets: set[str] = set()
+        for chunk in rag_chunks[:3]:
+            source_facets.update(str(value) for value in chunk.get("source_facets", []))
+
+        if not source_facets:
+            return 0.0
+
+        matched = {
+            facet
+            for facet in query_facets
+            if facet in source_facets
+            or (
+                facet == "tuition_payment"
+                and {"tuition", "tuition_price"} & source_facets
+            )
+            or (
+                facet == "tuition_price"
+                and {"tuition", "tuition_payment"} & source_facets
+            )
+            or (
+                facet == "admission_contacts"
+                and {"contacts", "admission"} & source_facets
+            )
+            or (
+                facet == "admission_dates"
+                and "admission" in source_facets
+            )
+            or (
+                facet == "student_unions"
+                and "student_life" in source_facets
+            )
+            or (
+                facet == "dorm"
+                and "location" in source_facets
+            )
+        }
+        return round(len(matched) / max(len(query_facets), 1), 4)
+
+    def _is_operational_query(self, text: str) -> bool:
+        low = text.lower()
+        return any(
+            marker in low
+            for marker in (
+                "распис",
+                "режим",
+                "работ",
+                "когда",
+                "где",
+                "контакт",
+                "телефон",
+                "почт",
+                "email",
+                "связ",
+                "адрес",
+            )
+        )
+
+    def _has_low_trust_operational_sources(self, rag_chunks: list[dict]) -> bool:
+        sources = [str(chunk.get("source", "")).lower() for chunk in rag_chunks[:3]]
+        if not sources:
+            return False
+        suspicious = sum(
+            1
+            for source in sources
+            if any(hint in source for hint in LOW_TRUST_OPERATIONAL_SOURCE_HINTS)
+        )
+        return suspicious >= max(1, len(sources) // 2)
+
+    def _passes_grounding_guard(
+        self,
+        text: str,
+        intent: str,
+        rag_chunks: list[dict],
+        evidence_coverage: float,
+    ) -> bool:
+        if not rag_chunks:
+            return False
+
+        anchor_support = self._estimate_anchor_support(text, rag_chunks)
+        facet_support = self._estimate_facet_support(text, rag_chunks)
+        query_facets = set(detect_facets(text))
+        strict_query_facets = query_facets & STRICT_FACETS
+        source_facets_present = any(
+            chunk.get("source_facets") for chunk in rag_chunks[:3]
+        )
+        has_trusted_source = self._has_high_trust_source(intent, rag_chunks)
+        has_contact_facet = self._has_any_source_facet(
+            rag_chunks, {"contacts", "admission_contacts"}
+        )
+        has_location_facet = self._has_any_source_facet(
+            rag_chunks, {"location", "dorm"}
+        )
+        low_trust_operational = self._is_operational_query(
+            text
+        ) and self._has_low_trust_operational_sources(rag_chunks)
+
+        if strict_query_facets and source_facets_present and facet_support == 0.0:
+            return False
+        if intent == "contacts" and self._is_operational_query(text):
+            if not has_trusted_source and not has_contact_facet:
+                return False
+        if intent == "location" and self._is_operational_query(text):
+            if not has_trusted_source and not has_location_facet:
+                return False
+        if low_trust_operational and anchor_support < 0.5:
+            return False
+        if intent == "general":
+            if anchor_support < 0.5:
+                return False
+            if query_facets and facet_support < 0.34:
+                return False
+        elif (
+            self._extract_query_anchors(text)
+            and anchor_support < 0.34
+            and evidence_coverage < 0.45
+            and not has_trusted_source
+        ):
+            return False
+        return True
+
     def _verify_grounding(
         self, answer: str, rag_chunks: list[dict]
     ) -> tuple[str, bool]:
@@ -545,6 +746,13 @@ class LLMService:
         for chunk in rag_chunks:
             source = str(chunk.get("source", "")).lower()
             if any(h in source for h in hints):
+                return True
+        return False
+
+    def _has_any_source_facet(self, rag_chunks: list[dict], expected: set[str]) -> bool:
+        for chunk in rag_chunks[:3]:
+            source_facets = {str(value) for value in chunk.get("source_facets", [])}
+            if source_facets & expected:
                 return True
         return False
 
@@ -792,6 +1000,17 @@ class LLMService:
             rag_sources=rag_sources,
             evidence_coverage=evidence_coverage,
         )
+        if not self._passes_grounding_guard(
+            text=text,
+            intent=intent,
+            rag_chunks=rag_chunks,
+            evidence_coverage=evidence_coverage,
+        ):
+            fallback_used = True
+            display_text = (
+                "В доступном фрагменте контекста нет точных подтвержденных данных "
+                "по этому вопросу."
+            )
         display_text, limited = self._limit_words(
             display_text, SETTINGS.max_display_words
         )
@@ -846,9 +1065,20 @@ class LLMService:
         if "нет точных подтвержденных данных" in display_text.lower():
             answer_mode = "uncertain"
         retrieval_version = getattr(self.rag, "version", "hybrid-rag-v3")
+        guard_multiplier = (
+            min(
+                self._estimate_anchor_support(text, rag_chunks),
+                max(self._estimate_facet_support(text, rag_chunks), evidence_coverage),
+            )
+            if rag_chunks
+            else 0.0
+        )
         grounding_score = round(
-            sum(float(chunk.get("score", 0.0)) for chunk in rag_chunks)
-            / max(len(rag_chunks), 1),
+            (
+                sum(float(chunk.get("score", 0.0)) for chunk in rag_chunks)
+                / max(len(rag_chunks), 1)
+            )
+            * max(guard_multiplier, 0.0),
             4,
         )
 
