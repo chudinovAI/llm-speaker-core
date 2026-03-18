@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlparse
@@ -245,22 +246,34 @@ class HybridRetrievalService:
     def _structural_bonus(self, query: str, hit: RetrievalHit) -> float:
         query_tokens = set(self._query_expansions(query))
         if not query_tokens:
-            return 0.0
-        structural_text = " ".join(
-            [
-                urlparse(hit.source).path.replace("/", " "),
-                str(hit.metadata.get("title", "")),
-                str(hit.metadata.get("section", "")),
-                " ".join(str(part) for part in hit.metadata.get("section_path", [])),
-            ]
-        )
-        structural_tokens = set(tokenize(structural_text))
-        for token in list(structural_tokens):
-            structural_tokens.update(PATH_TOKEN_ALIASES.get(token, ()))
-        if not structural_tokens:
-            return 0.0
-        overlap = len(query_tokens & structural_tokens) / len(query_tokens)
-        return overlap * 0.45
+            bonus = 0.0
+        else:
+            structural_text = " ".join(
+                [
+                    urlparse(hit.source).path.replace("/", " "),
+                    str(hit.metadata.get("title", "")),
+                    str(hit.metadata.get("section", "")),
+                    " ".join(str(part) for part in hit.metadata.get("section_path", [])),
+                ]
+            )
+            structural_tokens = set(tokenize(structural_text))
+            for token in list(structural_tokens):
+                structural_tokens.update(PATH_TOKEN_ALIASES.get(token, ()))
+            bonus = 0.0
+            if structural_tokens:
+                overlap = len(query_tokens & structural_tokens) / len(query_tokens)
+                bonus += overlap * 0.45
+
+        query_numbers = set(re.findall(r"\b\d+\b", query))
+        if query_numbers:
+            source = hit.source.lower()
+            title = str(hit.metadata.get("title", "")).lower()
+            for number in query_numbers:
+                if f"/{number}" in source:
+                    bonus += 0.28
+                if f"№{number}" in title or f" {number}" in title:
+                    bonus += 0.18
+        return bonus
 
     def _freshness_penalty(self, hit: RetrievalHit, intents: list[str]) -> float:
         archived = bool(hit.metadata.get("is_archived", False))

@@ -538,3 +538,43 @@ def test_hybrid_search_prefers_specific_dorm_page_for_specific_dorm_query() -> N
 
     assert hits
     assert hits[0]["source"] == "https://guap.ru/dom/2"
+
+
+def test_hybrid_search_uses_numeric_bonus_for_dorm_number() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Общежитие №2 ГУАП. Адрес, транспорт и администрация.",
+            "https://guap.ru/dom/2",
+            "dom",
+            title="Общежитие №2",
+            metadata={"page_type": "facilities", "source_facets": ["dorm", "location"]},
+        ),
+        _chunk(
+            "doc2:0",
+            "Общежития ГУАП. Общие сведения об объектах.",
+            "https://guap.ru/sveden/objects",
+            "sveden",
+            title="Общежития",
+            metadata={"page_type": "facilities", "source_facets": ["dorm", "location"]},
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="dorm-number",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-03-19T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Где находится общежитие 2 ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/dom/2"

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from llm_speaker_core.ingest.extractors.cloudflare import canonicalize_url
 from llm_speaker_core.ingest.normalize import (
+    build_chunk_corpus,
     dedupe_documents,
     document_from_cloudflare_record,
     load_firecrawl_documents,
@@ -182,3 +183,36 @@ def test_dedupe_documents_preserves_template_like_faculty_contacts(tmp_path: Pat
     assert len(docs) == 2
     assert docs[0].is_duplicate is False
     assert docs[1].is_duplicate is False
+
+
+def test_build_chunk_corpus_keeps_navigation_heavy_faculty_contacts() -> None:
+    doc = document_from_cloudflare_record(
+        {
+            "url": "https://new.guap.ru/i01/contacts",
+            "title": "Контакты института",
+            "markdown": (
+                "[Школьникам](https://guap.ru/profor)\n"
+                "[Поступающим](https://priem.guap.ru)\n"
+                "[Обучающимся](https://new.guap.ru/targets/studs)\n\n"
+                "# Контакты\n\n"
+                "Институт аэрокосмических приборов и систем ГУАП.\n"
+                "Телефон: (812) 571-16-89\n"
+                "Эл. почта: aerospace1@guap.ru\n"
+                "Директор института ГУАП: Майоров Николай Николаевич.\n"
+                "Заместитель директора: Овчинникова Наталья Анатольевна.\n"
+                "Б. Морская 67, каб. 52-14.\n"
+                "Гастелло, 15, каб. 13-11.\n"
+                "Телефон: (812) 494-70-10.\n"
+                "Эл. почта: aerospace_dean@guap.ru.\n"
+            ),
+        }
+    )
+    assert doc is not None
+    assert "faculty_contacts" in doc.metadata["source_facets"]
+    assert doc.is_low_text is False
+    assert doc.is_low_signal is False
+
+    chunks = build_chunk_corpus([doc])
+
+    assert chunks
+    assert chunks[0].canonical_url == "https://new.guap.ru/i01/contacts"

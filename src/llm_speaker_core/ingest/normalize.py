@@ -49,6 +49,14 @@ DEDUP_PRESERVE_FACETS = {
     "support",
     "dorm",
 }
+INDEX_PRESERVE_FACETS = {
+    "faculty_contacts",
+    "library",
+    "hr",
+    "medical",
+    "support",
+    "dorm",
+}
 
 
 def _content_hash(text: str) -> str:
@@ -343,7 +351,11 @@ def write_chunks(path: Path, chunks: list[ChunkRecord]) -> None:
 def build_chunk_corpus(documents: list[DocumentRecord]) -> list[ChunkRecord]:
     chunks: list[ChunkRecord] = []
     for doc in documents:
-        if doc.is_duplicate or doc.is_low_signal or doc.is_navigation or doc.is_low_text:
+        source_facets = {str(value) for value in doc.metadata.get("source_facets", [])}
+        preserve_indexing = bool(source_facets & INDEX_PRESERVE_FACETS)
+        if doc.is_duplicate or doc.is_low_signal or doc.is_low_text:
+            continue
+        if doc.is_navigation and not preserve_indexing:
             continue
         chunks.extend(chunk_document(doc))
     return chunks
