@@ -5,11 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "llm-speaker-core"
 version = "0.1.0"
-description = "LLM core for smart speaker: data cleaning, RAG, and text API."
+description = "Voice-first local assistant with hybrid RAG for GUAP."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "aiohttp>=3.13.2",
     "bs4>=0.0.2",
     "faiss-cpu>=1.12.0",
     "huggingface-hub>=0.34.4",
@@ -18,10 +17,7 @@ dependencies = [
     "pymupdf>=1.26.4",
     "pytesseract>=0.3.13",
     "pypdf>=6.4.2",
-    "pytest>=8.4.1",
     "python-docx>=1.2.0",
-    "sentence-transformers>=5.1.0",
-    "tqdm>=4.67.1",
     "requests>=2.32.5",
     "numpy>=2.4.3",
     "sounddevice>=0.5.5",
@@ -60,4 +56,5 @@ gigaam = { git = "https://github.com/salute-developers/GigaAM.git" }
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "pytest>=8.4.1",
 ]

@@ -32,17 +32,9 @@ def _classify_page_type(doc: DocumentRecord) -> str:
     title = doc.title.lower()
     if doc.source_type == "doc":
         return "document"
-    if host.startswith("lib.guap.ru") or "/struct/pols/lib" in path:
-        return "library"
-    if path.startswith("/med/") or "медицин" in title or "поликлиник" in title:
-        return "medical"
-    if path.startswith("/osvr/") or path.startswith("/c/osvr/") or "социальная стипендия" in title:
-        return "support"
     if path.endswith("/faq") or "вопросы и ответы" in title:
         return "faq"
     if path.endswith("/contacts") or "как нас найти" in title or "приемная комиссия" in title:
-        return "contacts"
-    if path.endswith("/empbook") or "отдел кадров" in title or "управление персонала" in title:
         return "contacts"
     if path.endswith("/rules") or "правила приема" in title or "положение" in title:
         return "policy"
@@ -127,26 +119,6 @@ def _classify_source_facets(doc: DocumentRecord) -> list[str]:
         facets.add("student_unions")
     if path.startswith("/vrmp") or "врмп" in low_title:
         facets.add("vrmp")
-    if host.startswith("lib.guap.ru") or "/struct/pols/lib" in path or "библиотек" in full_text or "читальн" in full_text:
-        facets.add("library")
-    if host.startswith("new.guap.ru") and path.endswith("/contacts"):
-        facets.add("faculty_contacts")
-        facets.add("contacts")
-    if path.endswith("/empbook") or "отдел кадров" in full_text or "управления персонала" in full_text:
-        facets.add("hr")
-        facets.add("contacts")
-    if path.startswith("/med/") or "медицинского центра" in full_text or "поликлиник" in full_text:
-        facets.add("medical")
-        facets.add("contacts")
-        facets.add("location")
-    if (
-        path.startswith("/osvr/")
-        or path.startswith("/c/osvr/")
-        or "социальная стипендия" in full_text
-        or "материальная помощь" in full_text
-        or "материальная поддержка" in full_text
-    ):
-        facets.add("support")
     return sorted(facets)
 
 

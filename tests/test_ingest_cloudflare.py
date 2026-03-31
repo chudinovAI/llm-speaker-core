@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from llm_speaker_core.ingest.extractors.cloudflare import canonicalize_url
 from llm_speaker_core.ingest.normalize import (
     build_chunk_corpus,
     dedupe_documents,
     document_from_cloudflare_record,
-    load_firecrawl_documents,
 )
 
 
@@ -79,64 +75,6 @@ def test_document_from_cloudflare_record_trims_priem_footer_sections() -> None:
     assert "Как нас найти?" not in doc.text
 
 
-def test_load_firecrawl_documents_reads_manifest_and_sets_urls(tmp_path: Path) -> None:
-    root = tmp_path / "firecrawl"
-    root.mkdir()
-    (root / "sample.md").write_text("# Библиотека ГУАП\nКонтакты и часы работы библиотеки.", encoding="utf-8")
-    (root / "firecrawl_manifest.json").write_text(
-        json.dumps(
-            {
-                "entries": [
-                    {
-                        "file_name": "sample.md",
-                        "source_url": "http://lib.guap.ru/",
-                    }
-                ]
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    docs = load_firecrawl_documents(root)
-
-    assert len(docs) == 1
-    assert docs[0].source_type == "firecrawl"
-    assert docs[0].canonical_url == "http://lib.guap.ru/"
-    assert docs[0].metadata["ingest_source"] == "firecrawl"
-    assert docs[0].metadata["page_type"] == "library"
-    assert "library" in docs[0].metadata["source_facets"]
-
-
-def test_load_firecrawl_documents_marks_faculty_contacts_without_admission_bias(tmp_path: Path) -> None:
-    root = tmp_path / "firecrawl"
-    root.mkdir()
-    (root / "faculty.md").write_text(
-        "# Контакты\nТелефон: (812) 571-16-89\nЭл. почта: aerospace1@guap.ru",
-        encoding="utf-8",
-    )
-    (root / "firecrawl_manifest.json").write_text(
-        json.dumps(
-            {
-                "entries": [
-                    {
-                        "file_name": "faculty.md",
-                        "source_url": "https://new.guap.ru/i01/contacts",
-                    }
-                ]
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    docs = load_firecrawl_documents(root)
-
-    assert len(docs) == 1
-    assert "faculty_contacts" in docs[0].metadata["source_facets"]
-    assert "admission_contacts" not in docs[0].metadata["source_facets"]
-
-
 def test_dedupe_documents_marks_cross_source_duplicates() -> None:
     first = document_from_cloudflare_record(
         {"url": "https://guap.ru/example", "markdown": "# Заголовок\nОдинаковый текст для проверки."}
@@ -154,65 +92,25 @@ def test_dedupe_documents_marks_cross_source_duplicates() -> None:
     assert docs[1].is_duplicate is True
 
 
-def test_dedupe_documents_preserves_template_like_faculty_contacts(tmp_path: Path) -> None:
-    root = tmp_path / "firecrawl"
-    root.mkdir()
-    common_text = (
-        "# Контакты\n"
-        "Телефон: (812) 571-16-89\n"
-        "Эл. почта: aerospace1@guap.ru\n"
-        "Директор института и заместители."
-    )
-    (root / "i01.md").write_text(common_text, encoding="utf-8")
-    (root / "i02.md").write_text(common_text.replace("aerospace1", "radio2"), encoding="utf-8")
-    (root / "firecrawl_manifest.json").write_text(
-        json.dumps(
-            {
-                "entries": [
-                    {"file_name": "i01.md", "source_url": "https://new.guap.ru/i01/contacts"},
-                    {"file_name": "i02.md", "source_url": "https://new.guap.ru/i02/contacts"},
-                ]
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    docs = dedupe_documents(load_firecrawl_documents(root))
-
-    assert len(docs) == 2
-    assert docs[0].is_duplicate is False
-    assert docs[1].is_duplicate is False
-
-
-def test_build_chunk_corpus_keeps_navigation_heavy_faculty_contacts() -> None:
+def test_build_chunk_corpus_keeps_specific_dorm_page() -> None:
     doc = document_from_cloudflare_record(
         {
-            "url": "https://new.guap.ru/i01/contacts",
-            "title": "Контакты института",
+            "url": "https://guap.ru/dom/2",
+            "title": "Общежитие №2",
             "markdown": (
-                "[Школьникам](https://guap.ru/profor)\n"
-                "[Поступающим](https://priem.guap.ru)\n"
-                "[Обучающимся](https://new.guap.ru/targets/studs)\n\n"
-                "# Контакты\n\n"
-                "Институт аэрокосмических приборов и систем ГУАП.\n"
-                "Телефон: (812) 571-16-89\n"
-                "Эл. почта: aerospace1@guap.ru\n"
-                "Директор института ГУАП: Майоров Николай Николаевич.\n"
-                "Заместитель директора: Овчинникова Наталья Анатольевна.\n"
-                "Б. Морская 67, каб. 52-14.\n"
-                "Гастелло, 15, каб. 13-11.\n"
-                "Телефон: (812) 494-70-10.\n"
-                "Эл. почта: aerospace_dean@guap.ru.\n"
+                "# Общежитие №2\n\n"
+                "Адрес общежития ГУАП, транспорт и сведения о проживании.\n"
+                "Б. Морская 67, корпус общежития.\n"
+                "В разделе размещены контактные данные, режим работы администрации, "
+                "правила проживания и информация для заселения студентов.\n"
             ),
         }
     )
     assert doc is not None
-    assert "faculty_contacts" in doc.metadata["source_facets"]
+    assert "dorm" in doc.metadata["source_facets"]
     assert doc.is_low_text is False
-    assert doc.is_low_signal is False
 
     chunks = build_chunk_corpus([doc])
 
     assert chunks
-    assert chunks[0].canonical_url == "https://new.guap.ru/i01/contacts"
+    assert chunks[0].canonical_url == "https://guap.ru/dom/2"

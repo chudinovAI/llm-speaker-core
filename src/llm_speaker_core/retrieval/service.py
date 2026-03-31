@@ -36,31 +36,15 @@ PATH_TOKEN_ALIASES = {
     "domsovet": ("общежитие", "объединения", "самоуправление"),
     "managers": ("руководство", "сотрудники"),
     "faq": ("вопросы", "ответы"),
-    "library": ("библиотека", "читальный", "зал", "ресурсы"),
-    "lib": ("библиотека", "читальный", "зал", "ресурсы"),
-    "jirbis2": ("библиотека", "электронные", "ресурсы", "каталог"),
-    "empbook": ("кадры", "персонал", "трудовая", "книжка"),
-    "med": ("медицинский", "центр", "поликлиника"),
-    "osvr": ("социальная", "стипендия", "поддержка", "помощь"),
-    "social": ("социальная", "стипендия", "поддержка"),
-    "help": ("материальная", "помощь", "поддержка"),
 }
 PREFERRED_SOURCE_HINTS = {
     "admission": ("priem.guap.ru", "/abitur"),
-    "library": ("lib.guap.ru", "/sveden/struct/pols/lib"),
-    "hr": ("/empbook", "/sveden/struct/pols/up_okr", "/sveden/struct/pols/up"),
-    "medical": ("/med/struct",),
-    "support": ("/osvr/line/", "/c/osvr/line/", "/gos_soc_stip", "/social", "/help"),
     "contacts": (
         "priem.guap.ru/contacts",
         "/contacts",
         "/contact",
         "/sveden/common",
         "/sveden/managers",
-        "new.guap.ru/",
-        "/empbook",
-        "lib.guap.ru",
-        "/med/struct",
     ),
     "location": ("/sveden/common", "/sveden/objects", "/address", "/contacts"),
     "student_life": ("/studlife", "/vrmp"),
@@ -147,46 +131,6 @@ FACET_RULES = {
         "page_type_penalty": {"faq": 0.18},
         "source_facet_bonus": {"vrmp": 0.44},
         "source_facet_penalty": {},
-    },
-    "library": {
-        "path_bonus": {"lib.guap.ru": 0.48, "/struct/pols/lib": 0.3, "/jirbis2/": 0.28, "/jirbis2/index.php": 0.16},
-        "path_penalty": {"/science/": 0.28, "/pubs/": 0.28, "/targets/": 0.18},
-        "page_type_bonus": {"library": 0.38, "reference": 0.1},
-        "page_type_penalty": {"faq": 0.12, "hub": 0.08},
-        "source_facet_bonus": {"library": 0.52},
-        "source_facet_penalty": {},
-    },
-    "hr": {
-        "path_bonus": {"/empbook": 0.54, "/struct/pols/up_okr": 0.3, "/struct/pols/up": 0.18},
-        "path_penalty": {"/science/": 0.28, "/pubs/": 0.24, "/targets/": 0.18},
-        "page_type_bonus": {"contacts": 0.28, "reference": 0.08},
-        "page_type_penalty": {"hub": 0.08},
-        "source_facet_bonus": {"hr": 0.52, "contacts": 0.12},
-        "source_facet_penalty": {"admission_contacts": 0.24},
-    },
-    "medical": {
-        "path_bonus": {"/med/struct": 0.58},
-        "path_penalty": {"/science/": 0.24, "/pubs/": 0.24},
-        "page_type_bonus": {"medical": 0.34, "contacts": 0.08},
-        "page_type_penalty": {"hub": 0.08},
-        "source_facet_bonus": {"medical": 0.52, "location": 0.1},
-        "source_facet_penalty": {},
-    },
-    "support": {
-        "path_bonus": {"/osvr/line/": 0.44, "/c/osvr/line/": 0.44, "/gos_soc_stip": 0.26, "/help": 0.34},
-        "path_penalty": {"/science/": 0.24, "/pubs/": 0.24},
-        "page_type_bonus": {"support": 0.3, "detail": 0.08},
-        "page_type_penalty": {"hub": 0.08},
-        "source_facet_bonus": {"support": 0.52},
-        "source_facet_penalty": {},
-    },
-    "faculty_contacts": {
-        "path_bonus": {"new.guap.ru/": 0.34, "/contacts": 0.34},
-        "path_penalty": {"priem.guap.ru/contacts": 0.26, "/sveden/managers": 0.18},
-        "page_type_bonus": {"contacts": 0.3},
-        "page_type_penalty": {"directory": 0.16, "hub": 0.08},
-        "source_facet_bonus": {"faculty_contacts": 0.52, "contacts": 0.12},
-        "source_facet_penalty": {"admission_contacts": 0.28},
     },
 }
 
@@ -307,18 +251,6 @@ class HybridRetrievalService:
                 bonus += 0.24
         if any(intent == "official_info" for intent in intents):
             if any(k in source for k in ("/sveden", "/document", "/common")):
-                bonus += 0.28
-        if any(intent == "library" for intent in intents):
-            if any(k in source for k in ("lib.guap.ru", "/struct/pols/lib")):
-                bonus += 0.28
-        if any(intent == "hr" for intent in intents):
-            if any(k in source for k in ("/empbook", "/struct/pols/up_okr", "/struct/pols/up")):
-                bonus += 0.28
-        if any(intent == "medical" for intent in intents):
-            if "/med/struct" in source:
-                bonus += 0.28
-        if any(intent == "support" for intent in intents):
-            if any(k in source for k in ("/osvr/line/", "/c/osvr/line/", "/gos_soc_stip", "/help", "/social")):
                 bonus += 0.28
         return bonus
 

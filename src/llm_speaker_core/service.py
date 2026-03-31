@@ -28,10 +28,6 @@ FACT_TOKENS_BY_INTENT = {
     "contacts": {"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
     "location": {"адрес", "корпус", "кампус"},
     "admission": {"баллы", "абитуриент", "документы", "направления", "поступление"},
-    "library": {"библиотека", "читальный", "зал", "ресурсы", "каталог"},
-    "hr": {"кадры", "персонал", "трудовая", "книжка", "работники"},
-    "medical": {"медицинский", "центр", "поликлиника", "врач"},
-    "support": {"стипендия", "социальная", "помощь", "поддержка", "льготы"},
 }
 LOW_SIGNAL_QUERY_STEMS = (
     "гуап",
@@ -61,11 +57,6 @@ STRICT_FACETS = {
     "student_unions",
     "dorm",
     "vrmp",
-    "library",
-    "hr",
-    "medical",
-    "support",
-    "faculty_contacts",
 }
 LOW_TRUST_OPERATIONAL_SOURCE_HINTS = (
     "/science/",
@@ -170,46 +161,6 @@ INTENT_RULES: dict[str, IntentRule] = {
         query_boost_terms=("адрес", "корпус", "кампус"),
         display_summary="Адреса и корпуса университета доступны в официальном разделе сведений ГУАП.",
         speaker_summary="Актуальные адреса и корпуса смотрите в официальных сведениях ГУАП.",
-    ),
-    "library": IntentRule(
-        fact_tokens={"библиотека", "читальный", "зал", "ресурсы", "каталог"},
-        trusted_source_hints=("lib.guap.ru", "/sveden/struct/pols/lib"),
-        allowed_source_hints=("lib.guap.ru", "/sveden/struct/pols/lib"),
-        query_boost_terms=("библиотека гуап", "читальный зал", "электронные ресурсы библиотеки"),
-        display_summary="По библиотеке лучше ориентироваться на официальный сайт библиотеки и положение о библиотеке ГУАП.",
-        speaker_summary="Актуальные данные по библиотеке смотрите на официальном сайте библиотеки ГУАП.",
-        min_evidence_for_freeform=0.28,
-        min_fact_token_hits=1,
-    ),
-    "hr": IntentRule(
-        fact_tokens={"кадры", "персонал", "трудовая", "книжка", "работники"},
-        trusted_source_hints=("/empbook", "/sveden/struct/pols/up_okr", "/sveden/struct/pols/up"),
-        allowed_source_hints=("/empbook", "/sveden/struct/pols/up_okr", "/sveden/struct/pols/up"),
-        query_boost_terms=("отдел кадров", "управление персонала", "трудовая книжка"),
-        display_summary="По вопросам отдела кадров ориентируйтесь на официальные контакты управления персонала ГУАП.",
-        speaker_summary="По вопросам отдела кадров смотрите официальный раздел управления персонала ГУАП.",
-        min_evidence_for_freeform=0.28,
-        min_fact_token_hits=1,
-    ),
-    "medical": IntentRule(
-        fact_tokens={"медицинский", "центр", "поликлиника", "врач", "кабинет"},
-        trusted_source_hints=("/med/struct",),
-        allowed_source_hints=("/med/struct",),
-        query_boost_terms=("медицинский центр гуап", "поликлиника", "режим работы"),
-        display_summary="По медицинскому центру ориентируйтесь на официальный раздел с адресами и режимом работы подразделений ГУАП.",
-        speaker_summary="Актуальные адреса и режим работы медцентра смотрите в официальном разделе ГУАП.",
-        min_evidence_for_freeform=0.28,
-        min_fact_token_hits=1,
-    ),
-    "support": IntentRule(
-        fact_tokens={"стипендия", "социальная", "помощь", "поддержка", "документы"},
-        trusted_source_hints=("/osvr/line/", "/c/osvr/line/", "/gos_soc_stip", "/social", "/help"),
-        allowed_source_hints=("/osvr/line/", "/c/osvr/line/", "/gos_soc_stip", "/social", "/help"),
-        query_boost_terms=("социальная стипендия", "материальная помощь", "поддержка студентов"),
-        display_summary="По социальной стипендии и материальной помощи ориентируйтесь на официальный раздел поддержки обучающихся ГУАП.",
-        speaker_summary="По социальной стипендии и материальной помощи смотрите официальный раздел поддержки обучающихся ГУАП.",
-        min_evidence_for_freeform=0.28,
-        min_fact_token_hits=1,
     ),
     "student_life": IntentRule(
         fact_tokens={"студенты", "клуб", "театр", "спорт", "активности"},
@@ -576,26 +527,6 @@ class LLMService:
                 facet == "dorm"
                 and "location" in source_facets
             )
-            or (
-                facet == "library"
-                and {"library", "contacts"} & source_facets
-            )
-            or (
-                facet == "hr"
-                and {"hr", "contacts"} & source_facets
-            )
-            or (
-                facet == "medical"
-                and {"medical", "contacts", "location"} & source_facets
-            )
-            or (
-                facet == "support"
-                and {"support", "contacts"} & source_facets
-            )
-            or (
-                facet == "faculty_contacts"
-                and {"faculty_contacts", "contacts"} & source_facets
-            )
         }
         return round(len(matched) / max(len(query_facets), 1), 4)
 
@@ -616,9 +547,6 @@ class LLMService:
                 "связ",
                 "адрес",
                 "кабинет",
-                "библиот",
-                "кадр",
-                "мед",
             )
         )
 
@@ -657,10 +585,6 @@ class LLMService:
         has_location_facet = self._has_any_source_facet(
             rag_chunks, {"location", "dorm"}
         )
-        has_library_facet = self._has_any_source_facet(rag_chunks, {"library"})
-        has_hr_facet = self._has_any_source_facet(rag_chunks, {"hr"})
-        has_medical_facet = self._has_any_source_facet(rag_chunks, {"medical"})
-        has_support_facet = self._has_any_source_facet(rag_chunks, {"support"})
         low_trust_operational = self._is_operational_query(
             text
         ) and self._has_low_trust_operational_sources(rag_chunks)
@@ -672,18 +596,6 @@ class LLMService:
                 return False
         if intent == "location" and self._is_operational_query(text):
             if not has_trusted_source and not has_location_facet:
-                return False
-        if intent == "library" and self._is_operational_query(text):
-            if not has_trusted_source and not has_library_facet:
-                return False
-        if intent == "hr" and self._is_operational_query(text):
-            if not has_trusted_source and not has_hr_facet:
-                return False
-        if intent == "medical" and self._is_operational_query(text):
-            if not has_trusted_source and not has_medical_facet:
-                return False
-        if intent == "support":
-            if not has_trusted_source and not has_support_facet:
                 return False
         if low_trust_operational and anchor_support < 0.5:
             return False

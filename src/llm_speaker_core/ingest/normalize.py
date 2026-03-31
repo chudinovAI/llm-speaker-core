@@ -42,19 +42,9 @@ EARLY_FOOTER_MARKERS = (
     "## полезные ресурсы",
 )
 DEDUP_PRESERVE_FACETS = {
-    "faculty_contacts",
-    "library",
-    "hr",
-    "medical",
-    "support",
     "dorm",
 }
 INDEX_PRESERVE_FACETS = {
-    "faculty_contacts",
-    "library",
-    "hr",
-    "medical",
-    "support",
     "dorm",
 }
 
@@ -257,54 +247,6 @@ def load_manual_documents(root: Path) -> list[DocumentRecord]:
         relative = path.relative_to(root).as_posix()
         source_url = f"manual://{relative}"
         documents.append(normalize_downloaded_document(path, source_url))
-    return documents
-
-
-def load_firecrawl_documents(root: Path) -> list[DocumentRecord]:
-    documents: list[DocumentRecord] = []
-    if not root.exists():
-        return documents
-
-    manifest_path = root / "firecrawl_manifest.json"
-    manifest_entries: list[dict] = []
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest_entries = list(manifest.get("entries", []))
-
-    for entry in manifest_entries:
-        file_name = str(entry.get("file_name", "")).strip()
-        source_url = str(entry.get("source_url", "")).strip()
-        if not file_name or not source_url:
-            continue
-        path = root / file_name
-        if not path.exists() or not path.is_file():
-            continue
-        text, extraction_mode, needs_ocr = parse_document_file(path)
-        title = _extract_markdown_title(text, path.name)
-        text = clean_extracted_text(text, extraction_mode)
-        canonical_url = canonicalize_url(source_url)
-        doc = DocumentRecord(
-            doc_id=f"firecrawl:{_content_hash(canonical_url)}",
-            source_url=source_url,
-            canonical_url=canonical_url,
-            source_type="firecrawl",
-            title=title,
-            section=_guess_section(canonical_url),
-            published_at=None,
-            language="ru",
-            crawl_job_id=None,
-            content_hash=_content_hash(text or source_url),
-            extraction_mode=extraction_mode,
-            ocr_used=extraction_mode == "pdf_ocr",
-            quality_score=0.0,
-            text=text.strip(),
-            metadata={
-                "file_name": file_name,
-                "ingest_source": "firecrawl",
-            },
-            needs_ocr=needs_ocr,
-        )
-        documents.append(assess_document_quality(doc))
     return documents
 
 
