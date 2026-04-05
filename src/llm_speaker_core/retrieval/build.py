@@ -57,7 +57,7 @@ def main() -> None:
     parser.add_argument("--manifest-out", type=Path, default=Path("data/index_manifest.json"))
     parser.add_argument("--lexical-out", type=Path, default=Path("data/indexes/bm25/index.json"))
     parser.add_argument("--dense-out", type=Path, default=Path("data/indexes/faiss/index.json"))
-    parser.add_argument("--embedding-model", default="BAAI/bge-m3")
+    parser.add_argument("--embedding-model", default="ai-sage/Giga-Embeddings-instruct")
     parser.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
     parser.add_argument("--manual-docs-dir", type=Path, default=Path("data/raw/manual_docs"))
     args = parser.parse_args()

@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from llm_speaker_core.retrieval.schemas import ChunkRecord, RetrievalHit
-from llm_speaker_core.utils.text import QUERY_EXPANSIONS, RU_STOPWORDS, TOKEN_RE
+from llm_speaker_core.utils.text import expand_query, tokenize
 
 
 @dataclass
@@ -18,27 +18,13 @@ class LexicalIndex:
     doc_lens: list[int]
     avg_doc_len: float
 
-    @staticmethod
-    def tokenize(text: str) -> list[str]:
-        tokens = [t.lower() for t in TOKEN_RE.findall(text)]
-        return [t for t in tokens if t not in RU_STOPWORDS and len(t) > 1]
-
-    @classmethod
-    def expand_query(cls, tokens: list[str]) -> list[str]:
-        expanded = list(tokens)
-        for token in tokens:
-            for stem, extra in QUERY_EXPANSIONS.items():
-                if token.startswith(stem):
-                    expanded.extend(extra)
-        return expanded
-
     @classmethod
     def build(cls, chunks: list[ChunkRecord]) -> "LexicalIndex":
         doc_freqs: Counter[str] = Counter()
         doc_tfs: list[dict[str, int]] = []
         doc_lens: list[int] = []
         for chunk in chunks:
-            tokens = cls.tokenize(chunk.text)
+            tokens = tokenize(chunk.text)
             tf = Counter(tokens)
             doc_tfs.append(dict(tf))
             doc_lens.append(len(tokens))
@@ -52,25 +38,8 @@ class LexicalIndex:
             avg_doc_len=avg_doc_len,
         )
 
-    @staticmethod
-    def _chunk_metadata(chunk: ChunkRecord) -> dict[str, object]:
-        return {
-            "section_path": list(chunk.section_path),
-            "title": chunk.title,
-            "section": chunk.section,
-            "canonical_url": chunk.canonical_url,
-            "source_url": chunk.source_url,
-            "published_at": chunk.published_at,
-            "page_type": chunk.metadata.get("page_type"),
-            "source_facets": list(chunk.metadata.get("source_facets", [])),
-            "quality_score": chunk.quality_score,
-            "quality_flags": list(chunk.quality_flags),
-            "is_archived": chunk.is_archived,
-            "is_low_signal": chunk.is_low_signal,
-        }
-
     def search(self, query: str, top_k: int = 8) -> list[RetrievalHit]:
-        query_tokens = self.expand_query(self.tokenize(query))
+        query_tokens = expand_query(tokenize(query))
         if not query_tokens:
             return []
         scores: list[tuple[float, int]] = []
@@ -108,7 +77,7 @@ class LexicalIndex:
                     text=chunk.text,
                     score=round(score, 6),
                     retrieval_stage="lexical",
-                    metadata=self._chunk_metadata(chunk),
+                    metadata=chunk.hit_metadata(),
                 )
             )
         return hits

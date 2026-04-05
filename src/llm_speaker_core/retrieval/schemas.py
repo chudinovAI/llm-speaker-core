@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +32,6 @@ class DocumentRecord:
     is_foreign_language: bool = False
     is_low_signal: bool = False
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
 
 @dataclass
 class ChunkRecord:
@@ -62,8 +59,21 @@ class ChunkRecord:
     is_archived: bool = False
     is_low_signal: bool = False
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def hit_metadata(self) -> dict[str, object]:
+        return {
+            "section_path": list(self.section_path),
+            "title": self.title,
+            "section": self.section,
+            "canonical_url": self.canonical_url,
+            "source_url": self.source_url,
+            "published_at": self.published_at,
+            "page_type": self.metadata.get("page_type"),
+            "source_facets": list(self.metadata.get("source_facets", [])),
+            "quality_score": self.quality_score,
+            "quality_flags": list(self.quality_flags),
+            "is_archived": self.is_archived,
+            "is_low_signal": self.is_low_signal,
+        }
 
 
 @dataclass
@@ -97,9 +107,6 @@ class IndexManifest:
     doc_count: int
     chunk_count: int
     metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
     @classmethod
     def from_path(cls, path: Path) -> "IndexManifest":

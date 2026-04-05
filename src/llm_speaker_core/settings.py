@@ -14,11 +14,11 @@ class AppSettings:
     hybrid_lexical_index_path: Path = Path("data/indexes/bm25/index.json")
     hybrid_dense_index_path: Path = Path("data/indexes/faiss/index.json")
     retrieval_backend: str = "hybrid"
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = "ai-sage/Giga-Embeddings-instruct"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
-    rag_top_k: int = 3
+    rag_top_k: int = 5
     language: str = "ru"
-    max_display_words: int = 70
+    max_display_words: int = 120
     max_speaker_words: int = 14
     speaker_mode: str = "llm"  # local | llm
     max_memory_turns: int = 5

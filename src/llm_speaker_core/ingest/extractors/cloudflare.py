@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -50,7 +51,7 @@ def extract_document_links(record: dict, allowed_domain: str) -> list[str]:
                 continue
             links.append(absolute)
     if isinstance(markdown, str) and markdown.strip():
-        for match in __import__("re").finditer(r"\[[^\]]+\]\(([^)]+)\)", markdown):
+        for match in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", markdown):
             absolute = canonicalize_url(urljoin(source_url, match.group(1)))
             if not absolute:
                 continue

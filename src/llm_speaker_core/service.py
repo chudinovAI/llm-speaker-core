@@ -23,31 +23,12 @@ SPEAKER_STOPWORDS = {
     "или",
     "ли",
 }
-FACT_TOKENS_BY_INTENT = {
-    "tuition": {"стоимость", "цена", "оплата", "договор", "руб", "обучение", "платное"},
-    "contacts": {"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
-    "location": {"адрес", "корпус", "кампус"},
-    "admission": {"баллы", "абитуриент", "документы", "направления", "поступление"},
-}
 LOW_SIGNAL_QUERY_STEMS = (
-    "гуап",
-    "универ",
-    "инстит",
-    "санкт",
-    "петер",
     "расска",
     "подска",
-    "информ",
     "подроб",
-    "официа",
-    "данн",
     "вопрос",
     "ответ",
-    "работ",
-    "режим",
-    "час",
-    "врем",
-    "распис",
 )
 STRICT_FACETS = {
     "admission_dates",
@@ -257,17 +238,13 @@ class LLMService:
         return (
             "Ты голосовой ассистент СПбГУАП. "
             "Отвечай строго на русском языке. "
-            "Критично важно: ГУАП расшифровывается только как "
-            "'Санкт-Петербургский государственный университет аэрокосмического приборостроения'. "
-            "Запрещено путать ГУАП с другими вузами и давать ложные расшифровки. "
-            "Формат для дисплея: разрешены только короткие абзацы, переносы строк, "
-            "короткие списки и **жирный**. Без HTML и без сложного markdown. "
-            "Избегай токсичности, оскорблений и негативных необоснованных суждений о ГУАП. "
-            "Если вопрос провокационный, отвечай нейтрально и конструктивно. "
-            "Ответ должен быть фактологичным и полезным. "
-            "Запрещено придумывать даты, названия, статусы и исторические факты. "
-            "Если в доступном фрагменте контекста нет точного факта, прямо скажи: "
-            "'В доступном фрагменте контекста нет точных подтвержденных данных'."
+            "ГУАП — Санкт-Петербургский государственный университет "
+            "аэрокосмического приборостроения. "
+            "Не путай ГУАП с другими вузами. "
+            "Отвечай на основе предоставленного контекста. "
+            "Если контекст содержит релевантную информацию, используй её для ответа. "
+            "Формат: короткие абзацы, списки, **жирный**. Без HTML. "
+            "Запрещено придумывать даты, названия и факты, которых нет в контексте."
         )
 
     def _build_speaker_system_prompt(self) -> str:
@@ -432,9 +409,7 @@ class LLMService:
     def _estimate_evidence_coverage(self, text: str, rag_chunks: list[dict]) -> float:
         intent = self._primary_intent(text)
         query_tokens = set(expand_query(tokenize(text)))
-        fact_tokens = self._intent_rule(
-            intent
-        ).fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
+        fact_tokens = self._intent_rule(intent).fact_tokens
         if fact_tokens:
             prioritized = {t for t in query_tokens if t in fact_tokens}
             if prioritized:
@@ -572,46 +547,15 @@ class LLMService:
             return False
 
         anchor_support = self._estimate_anchor_support(text, rag_chunks)
-        facet_support = self._estimate_facet_support(text, rag_chunks)
-        query_facets = set(detect_facets(text))
-        strict_query_facets = query_facets & STRICT_FACETS
-        source_facets_present = any(
-            chunk.get("source_facets") for chunk in rag_chunks[:3]
-        )
         has_trusted_source = self._has_high_trust_source(intent, rag_chunks)
-        has_contact_facet = self._has_any_source_facet(
-            rag_chunks, {"contacts", "admission_contacts"}
-        )
-        has_location_facet = self._has_any_source_facet(
-            rag_chunks, {"location", "dorm"}
-        )
-        low_trust_operational = self._is_operational_query(
-            text
-        ) and self._has_low_trust_operational_sources(rag_chunks)
 
-        if strict_query_facets and source_facets_present and facet_support == 0.0:
-            return False
-        if intent == "contacts" and self._is_operational_query(text):
-            if not has_trusted_source and not has_contact_facet:
-                return False
-        if intent == "location" and self._is_operational_query(text):
-            if not has_trusted_source and not has_location_facet:
-                return False
-        if low_trust_operational and anchor_support < 0.5:
-            return False
-        if intent == "general":
-            if anchor_support < 0.5:
-                return False
-            if query_facets and facet_support < 0.34:
-                return False
-        elif (
-            self._extract_query_anchors(text)
-            and anchor_support < 0.34
-            and evidence_coverage < 0.45
-            and not has_trusted_source
-        ):
-            return False
-        return True
+        if has_trusted_source:
+            return True
+        if evidence_coverage >= 0.2:
+            return True
+        if anchor_support >= 0.3:
+            return True
+        return False
 
     def _verify_grounding(
         self, answer: str, rag_chunks: list[dict]
@@ -639,7 +583,7 @@ class LLMService:
                 kept.append(sent)
                 continue
             overlap = len(sent_tokens & ctx_tokens) / max(len(sent_tokens), 1)
-            if overlap >= 0.28:
+            if overlap >= 0.15:
                 kept.append(sent)
             else:
                 changed = True
@@ -670,7 +614,7 @@ class LLMService:
 
         rule = self._intent_rule(intent)
         query_tokens = set(expand_query(tokenize(text)))
-        fact_tokens = rule.fact_tokens or FACT_TOKENS_BY_INTENT.get(intent, set())
+        fact_tokens = rule.fact_tokens
         if fact_tokens:
             focused = {t for t in query_tokens if t in fact_tokens}
             if focused:
@@ -960,7 +904,7 @@ class LLMService:
         display_raw = self.llm.generate(
             system_prompt=self._build_display_system_prompt(),
             user_prompt=self._compose_user_prompt(session_id, text, rag_chunks),
-            max_tokens=110,
+            max_tokens=200,
         )
         display_text = self._sanitize_markdown_lite(display_raw)
         display_text = self._dedupe_sentences(display_text)
@@ -986,7 +930,7 @@ class LLMService:
             should_force_extractive
             and rag_hits > 0
             and (
-                evidence_coverage >= 0.3
+                evidence_coverage >= 0.1
                 or self._has_high_trust_source(intent, rag_chunks)
             )
         ):
