@@ -1,3 +1,4 @@
 data/normalized/*.jsonl filter=lfs diff=lfs merge=lfs -text
 data/index_manifest.json filter=lfs diff=lfs merge=lfs -text
 data/indexes/** filter=lfs diff=lfs merge=lfs -text
+data/raw/**/*.jsonl filter=lfs diff=lfs merge=lfs -text

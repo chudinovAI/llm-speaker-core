@@ -34,3 +34,4 @@ runtime/
 *.wav
 guap_raw_for_kaggle*.zip
 rag_artifacts_kaggle.zip
+rag_index.tar.gz

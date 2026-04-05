@@ -31,10 +31,12 @@ dependencies = [
     "transformers<5",
     "sentence-transformers>=5",
     "einops>=0.8",
+    "html2text>=2025.4.15",
 ]
 
 [project.scripts]
 llm-crawl-cloudflare = "llm_speaker_core.ingest.connectors.cloudflare:main"
+llm-crawl = "llm_speaker_core.ingest.connectors.crawler:main"
 llm-build-hybrid-index = "llm_speaker_core.retrieval.build:main"
 llm-eval-hybrid-rag = "llm_speaker_core.retrieval.eval:main"
 llm-asr = "llm_speaker_core.voice.asr:main"
