@@ -1,0 +1,15 @@
+---
+description: Ollama must be running for LLM and voice stack; how to verify
+alwaysApply: true
+---
+
+# Ollama (локальный LLM)
+
+Перед отладкой голосового стека, `LLMService`, моста ASR→LLM или любых шагов, где вызывается `OllamaClient` (`settings.ollama_base_url`, по умолчанию `http://127.0.0.1:11434`):
+
+1. **Убедиться, что Ollama запущена** — иначе `Connection refused` (errno 61 на macOS).
+   - Запустить приложение Ollama **или** в отдельном терминале: `ollama serve`.
+2. **Проверка:** `curl -s http://127.0.0.1:11434/api/tags` должен вернуть JSON, не ошибку соединения.
+3. **Модель:** `ollama pull <имя из settings.ollama_model>` если ответа нет или 404.
+
+Не предлагать «исправить код», если ошибка — отказ в соединении с `127.0.0.1:11434`; сначала проверить запуск Ollama.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import time
 from pathlib import Path
@@ -223,6 +224,7 @@ def run_bridge(
                 VoiceEvent(kind="transcript_final", session_id=args.session_id, text=text),
             )
             try:
+                print(f'[ASR->LLM] generating (model + RAG)...', flush=True)
                 result = _direct_query(service, text, args.session_id)
 
                 record = {
@@ -294,7 +296,12 @@ def run_bridge(
             except Exception as exc:  # noqa: BLE001
                 err = {"ts": ts, "input_text": text, "error": str(exc)}
                 out_f.write(json.dumps(err, ensure_ascii=False) + "\n")
-                print(f'[ASR->LLM] ERROR for "{text}": {exc}')
+                hint = ""
+                if getattr(exc, "errno", None) == errno.ECONNREFUSED or (
+                    "Connection refused" in str(exc)
+                ):
+                    hint = " (запустите Ollama: приложение или `ollama serve`)"
+                print(f'[ASR->LLM] ERROR for "{text}": {exc}{hint}')
                 _emit(
                     event_sink,
                     on_event,

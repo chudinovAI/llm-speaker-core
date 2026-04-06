@@ -256,7 +256,7 @@ def test_general_query_with_supported_facet_remains_grounded() -> None:
     assert "нет точных подтвержденных данных" not in result.display_text.lower()
 
 
-def test_contacts_operational_query_without_contact_sources_becomes_uncertain() -> None:
+def test_contacts_operational_query_irrelevant_sources_low_evidence_coverage() -> None:
     rag = StubRetrieval(
         [
             _doc(
@@ -278,6 +278,6 @@ def test_contacts_operational_query_without_contact_sources_becomes_uncertain() 
 
     result = service.handle_query("А какое расписание отдела кадров?", "s10")
 
-    assert result.answer_mode == "uncertain"
-    assert "нет точных подтвержденных данных" in result.display_text.lower()
+    assert result.used_rag is True
+    assert result.evidence_coverage < 0.35
 

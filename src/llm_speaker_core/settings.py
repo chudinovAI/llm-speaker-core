@@ -20,11 +20,13 @@ class AppSettings:
     language: str = "ru"
     max_display_words: int = 120
     max_speaker_words: int = 14
-    speaker_mode: str = "llm"  # local | llm
+    # local: один вызов LLM на ответ (быстрее для голоса). llm: второй вызов для озвучки.
+    speaker_mode: str = "local"
     max_memory_turns: int = 5
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3.5:2b"
-    llm_timeout_s: float = 30.0
+    ollama_model: str = "qwen3.5:9b"
+    # 9b и «llm» speaker дают 2 запроса подряд — нужен запас; иначе таймаут до ответа в логах.
+    llm_timeout_s: float = 180.0
     fallback_text: str = (
         "Извините, не получилось сформировать ответ. Повторите вопрос, пожалуйста."
     )

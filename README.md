@@ -54,12 +54,3 @@ uv run llm-voice-stack \
 uv run mypy .
 uv run pytest -q
 ```
-
-## Data pipeline
-
-```
-1. Crawl        →  uv run llm-crawl-cloudflare --account-id ... --api-token ...
-2. Normalize    →  (runs automatically inside llm-build-hybrid-index)
-3. Build index  →  uv run llm-build-hybrid-index
-4. Evaluate     →  uv run llm-eval-hybrid-rag
-```

@@ -236,15 +236,14 @@ class LLMService:
 
     def _build_display_system_prompt(self) -> str:
         return (
-            "Ты голосовой ассистент СПбГУАП. "
-            "Отвечай строго на русском языке. "
-            "ГУАП — Санкт-Петербургский государственный университет "
-            "аэрокосмического приборостроения. "
-            "Не путай ГУАП с другими вузами. "
-            "Отвечай на основе предоставленного контекста. "
-            "Если контекст содержит релевантную информацию, используй её для ответа. "
-            "Формат: короткие абзацы, списки, **жирный**. Без HTML. "
-            "Запрещено придумывать даты, названия и факты, которых нет в контексте."
+            "Ты голосовой ассистент ГУАП (Санкт-Петербургский государственный "
+            "университет аэрокосмического приборостроения). "
+            "Отвечай на русском языке, кратко и по делу. "
+            "Используй информацию из контекста. "
+            "Если точного ответа нет — расскажи что знаешь по теме и подскажи "
+            "куда обратиться (сайт, телефон, email из контекста). "
+            "Не начинай ответ с расшифровки аббревиатуры ГУАП. "
+            "Формат: короткие абзацы, **жирный** для ключевого. Без HTML."
         )
 
     def _build_speaker_system_prompt(self) -> str:
@@ -259,7 +258,20 @@ class LLMService:
         text = re.sub(r"[`#>]+", "", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"\*\*\s+", "**", text)
+        text = re.sub(
+            r"\*\*([^*]+)\*\*([А-Яа-яA-Za-z«(])",
+            r"**\1** \2",
+            text,
+        )
         return text.strip()
+
+    def _strip_leading_guap_boilerplate(self, text: str) -> str:
+        prefix = (
+            r"^\s*ГУАП\s*[—\-]\s*Санкт-Петербургский государственный университет "
+            r"аэрокосмического приборостроения\.?\s+"
+        )
+        stripped = re.sub(prefix, "", text, count=1, flags=re.IGNORECASE)
+        return stripped.strip() if stripped.strip() else text.strip()
 
     def _to_plain_text(self, text: str) -> str:
         text = re.sub(r"[*_`#>-]", "", text)
@@ -302,12 +314,11 @@ class LLMService:
             return text, changed
         return " ".join(filtered).strip(), changed
 
-    def _force_single_sentence(self, text: str) -> str:
+    def _force_short_speaker(self, text: str, max_sentences: int = 2) -> str:
         parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
         if not parts:
             return text.strip()
-        first = parts[0].rstrip(".!?")
-        return f"{first}."
+        return " ".join(parts[:max_sentences])
 
     def _finalize_display_tail(self, text: str) -> tuple[str, bool]:
         text = text.strip()
@@ -348,10 +359,6 @@ class LLMService:
                 flags=re.IGNORECASE,
             ).strip()
             text = f"{self._GUAP_CANONICAL} {cleaned}".strip()
-            changed = True
-
-        if "гуап" in lower and "аэрокосмического приборостроения" not in lower:
-            text = f"{self._GUAP_CANONICAL} {text}".strip()
             changed = True
 
         return text, changed
@@ -824,23 +831,22 @@ class LLMService:
             if len(token) > 2 and token.lower() not in SPEAKER_STOPWORDS
         }
 
-        best_sentence = sentences[0]
-        best_score = float(-(10**9))
-        for sentence in sentences:
+        scored: list[tuple[float, int, str]] = []
+        for idx, sentence in enumerate(sentences):
             sent_tokens = {
                 token.lower()
                 for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]+", sentence)
                 if len(token) > 2
             }
             overlap = len(query_tokens & sent_tokens) if query_tokens else 0
-            length_penalty = abs(len(sentence.split()) - 10) * 0.05
-            guap_bonus = 0.35 if "гуап" in sent_tokens else 0.0
-            score = overlap + guap_bonus - length_penalty
-            if score > best_score:
-                best_score = score
-                best_sentence = sentence
+            length_penalty = abs(len(sentence.split()) - 12) * 0.03
+            position_bonus = 0.1 if idx < 3 else 0.0
+            score = overlap + position_bonus - length_penalty
+            scored.append((score, idx, sentence))
 
-        return best_sentence
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        picked = sorted(scored[:2], key=lambda x: x[1])
+        return " ".join(s for _, _, s in picked)
 
     def _is_fact_sensitive_query(self, text: str) -> bool:
         low = text.lower()
@@ -904,10 +910,11 @@ class LLMService:
         display_raw = self.llm.generate(
             system_prompt=self._build_display_system_prompt(),
             user_prompt=self._compose_user_prompt(session_id, text, rag_chunks),
-            max_tokens=200,
+            max_tokens=300,
         )
         display_text = self._sanitize_markdown_lite(display_raw)
         display_text = self._dedupe_sentences(display_text)
+        display_text = self._strip_leading_guap_boilerplate(display_text)
         display_text, policy_removed = self._remove_policy_artifacts(display_text)
         limits_applied = limits_applied or policy_removed
         display_text, grounding_changed = self._verify_grounding(
@@ -922,10 +929,7 @@ class LLMService:
         limits_applied = limits_applied or limited
         display_text, tail_fixed = self._finalize_display_tail(display_text)
         limits_applied = limits_applied or tail_fixed
-        should_force_extractive = (
-            "нет точных подтвержденных данных" in display_text.lower()
-            or self._is_low_info_display(display_text)
-        )
+        should_force_extractive = self._is_low_info_display(display_text)
         if (
             should_force_extractive
             and rag_hits > 0
@@ -938,6 +942,7 @@ class LLMService:
             if extractive:
                 display_text = self._sanitize_markdown_lite(extractive)
                 display_text = self._dedupe_sentences(display_text)
+                display_text = self._strip_leading_guap_boilerplate(display_text)
                 display_text, changed_identity = self._enforce_university_identity(
                     display_text
                 )
@@ -961,10 +966,6 @@ class LLMService:
             evidence_coverage=evidence_coverage,
         ):
             fallback_used = True
-            display_text = (
-                "В доступном фрагменте контекста нет точных подтвержденных данных "
-                "по этому вопросу."
-            )
         display_text, limited = self._limit_words(
             display_text, SETTINGS.max_display_words
         )
@@ -999,7 +1000,8 @@ class LLMService:
                 speaker_text
             )
             limits_applied = limits_applied or changed_speaker_identity
-            speaker_text = self._force_single_sentence(speaker_text)
+            speaker_text = self._strip_leading_guap_boilerplate(speaker_text)
+            speaker_text = self._force_short_speaker(speaker_text)
             speaker_text = self._apply_intent_speaker_policy(
                 intent=intent,
                 speaker_text=speaker_text,

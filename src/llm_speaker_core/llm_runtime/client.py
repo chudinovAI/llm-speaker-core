@@ -22,15 +22,16 @@ class OllamaClient:
                 {"role": "user", "content": user_prompt},
             ],
             "stream": False,
-            "think": False,
             "options": {
                 "temperature": 0.2,
                 "num_predict": max_tokens,
-                "think": False,
             },
         }
 
-        with httpx.Client(timeout=self.timeout_s) as client:
+        timeout = httpx.Timeout(
+            connect=30.0, read=self.timeout_s, write=30.0, pool=30.0
+        )
+        with httpx.Client(timeout=timeout) as client:
             response = client.post(
                 f"{self.base_url.rstrip('/')}/api/chat",
                 json=payload,
