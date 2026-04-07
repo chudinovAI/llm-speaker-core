@@ -44,6 +44,8 @@ uv run llm-voice-stack \
 
 Звук в динамики включён по умолчанию; только запись WAV без проигрывания: `--no-tts-play`.
 
+В каталоге `runtime/` (или `--runtime-dir`): полный текст ответа для UI — **`display_output.txt`** (блоки `Q:` / текст / `---`), озвучка — **`speaker_output.txt`**, полный лог — **`asr_llm_output.jsonl`**.
+
 ## Retrieval modes
 
 - `--retrieval-mode fast` (default) — BM25 only, no GPU needed

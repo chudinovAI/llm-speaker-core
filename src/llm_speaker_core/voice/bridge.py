@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSONL path for LLM responses.",
     )
     parser.add_argument(
+        "--display-output",
+        type=Path,
+        default=Path("runtime/display_output.txt"),
+        help="Append display_text (full LLM reply for UI) per turn.",
+    )
+    parser.add_argument(
         "--speaker-output",
         type=Path,
         default=Path("runtime/speaker_output.txt"),
@@ -170,6 +176,15 @@ def _write_speaker_output(path: Path | None, text: str) -> None:
         f.write(text.strip() + "\n")
 
 
+def _write_display_output(path: Path | None, query: str, display_text: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    block = f"Q: {query}\n{display_text.strip()}\n---\n"
+    with path.open("a", encoding="utf-8", buffering=1) as f:
+        f.write(block)
+
+
 def _emit(
     sink: VoiceEventSink | None,
     callback: Callable[[VoiceEvent], None] | None,
@@ -192,6 +207,8 @@ def run_bridge(
     print(f"[ASR->LLM] input={args.input.resolve()}")
     print(f"[ASR->LLM] out={args.out.resolve()}")
     print(f"[ASR->LLM] session_id={args.session_id}")
+    if getattr(args, "display_output", None):
+        print(f"[ASR->LLM] display_out={args.display_output.resolve()}")
     if args.speaker_output:
         print(f"[ASR->LLM] speaker_out={args.speaker_output.resolve()}")
 
@@ -263,6 +280,9 @@ def run_bridge(
                         ),
                     )
 
+                _write_display_output(
+                    getattr(args, "display_output", None), text, record["display_text"]
+                )
                 _write_speaker_output(args.speaker_output, record["speaker_text"])
 
                 if tts is not None and record["speaker_text"]:

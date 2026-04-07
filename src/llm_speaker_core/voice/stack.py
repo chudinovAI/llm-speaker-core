@@ -102,6 +102,7 @@ def main() -> None:
         input=paths.asr_output,
         session_id=args.session_id,
         out=paths.llm_output,
+        display_output=paths.display_output,
         speaker_output=paths.speaker_output,
         events_out=paths.events_output,
         poll_interval=0.15,

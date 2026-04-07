@@ -20,6 +20,7 @@ class VoiceRuntimePaths:
     runtime_dir: Path
     asr_output: Path
     llm_output: Path
+    display_output: Path
     speaker_output: Path
     events_output: Path
     tts_dir: Path
@@ -30,6 +31,7 @@ class VoiceRuntimePaths:
             runtime_dir=runtime_dir,
             asr_output=runtime_dir / "asr_output.txt",
             llm_output=runtime_dir / "asr_llm_output.jsonl",
+            display_output=runtime_dir / "display_output.txt",
             speaker_output=runtime_dir / "speaker_output.txt",
             events_output=runtime_dir / "voice_events.jsonl",
             tts_dir=runtime_dir / "tts",

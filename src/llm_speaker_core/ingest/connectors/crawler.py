@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import html2text
-import requests
+import requests  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup
 
 from llm_speaker_core.ingest.extractors.cloudflare import canonicalize_url
