@@ -176,11 +176,11 @@ def _write_speaker_output(path: Path | None, text: str) -> None:
         f.write(text.strip() + "\n")
 
 
-def _write_display_output(path: Path | None, query: str, display_text: str) -> None:
+def _write_display_output(path: Path | None, display_text: str) -> None:
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    block = f"Q: {query}\n{display_text.strip()}\n---\n"
+    block = f"{display_text.strip()}\n---\n"
     with path.open("a", encoding="utf-8", buffering=1) as f:
         f.write(block)
 
@@ -281,7 +281,7 @@ def run_bridge(
                     )
 
                 _write_display_output(
-                    getattr(args, "display_output", None), text, record["display_text"]
+                    getattr(args, "display_output", None), record["display_text"]
                 )
                 _write_speaker_output(args.speaker_output, record["speaker_text"])
 
