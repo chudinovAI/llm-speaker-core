@@ -45,7 +45,7 @@ def extract_document_links(record: dict, allowed_domain: str) -> list[str]:
             if not absolute:
                 continue
             parsed = urlparse(absolute)
-            if parsed.netloc != allowed_domain:
+            if parsed.netloc != allowed_domain and not parsed.netloc.endswith(f".{allowed_domain}"):
                 continue
             if not parsed.path.lower().endswith((".pdf", ".doc", ".docx")):
                 continue
@@ -56,7 +56,7 @@ def extract_document_links(record: dict, allowed_domain: str) -> list[str]:
             if not absolute:
                 continue
             parsed = urlparse(absolute)
-            if parsed.netloc != allowed_domain:
+            if parsed.netloc != allowed_domain and not parsed.netloc.endswith(f".{allowed_domain}"):
                 continue
             if not parsed.path.lower().endswith((".pdf", ".doc", ".docx")):
                 continue

@@ -43,9 +43,17 @@ EARLY_FOOTER_MARKERS = (
 )
 DEDUP_PRESERVE_FACETS = {
     "dorm",
+    "org_unit",
+    "org_contacts",
+    "org_schedule",
+    "org_staff",
 }
 INDEX_PRESERVE_FACETS = {
     "dorm",
+    "org_unit",
+    "org_contacts",
+    "org_schedule",
+    "org_staff",
 }
 
 

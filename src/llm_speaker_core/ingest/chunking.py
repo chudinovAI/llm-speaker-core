@@ -40,8 +40,20 @@ def split_blocks(text: str) -> list[tuple[str, str]]:
 
 
 def chunk_document(
-    doc: DocumentRecord, min_tokens: int = 250, max_tokens: int = 400, overlap_tokens: int = 60
+    doc: DocumentRecord,
+    min_tokens: int | None = None,
+    max_tokens: int | None = None,
+    overlap_tokens: int | None = None,
 ) -> list[ChunkRecord]:
+    if min_tokens is None or max_tokens is None or overlap_tokens is None:
+        if doc.source_type == "web":
+            min_tokens = 120
+            max_tokens = 220
+            overlap_tokens = 30
+        else:
+            min_tokens = 250
+            max_tokens = 400
+            overlap_tokens = 60
     blocks = split_blocks(doc.text)
     chunks: list[ChunkRecord] = []
     buffer: list[str] = []

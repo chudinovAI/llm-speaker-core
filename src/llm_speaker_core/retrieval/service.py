@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict
+import hashlib
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -10,129 +11,19 @@ from llm_speaker_core.retrieval.dense import DenseIndex
 from llm_speaker_core.retrieval.lexical import LexicalIndex
 from llm_speaker_core.retrieval.rerank import CrossEncoderReranker
 from llm_speaker_core.retrieval.schemas import ChunkRecord, EvidencePack, IndexManifest, RetrievalHit
-from llm_speaker_core.utils.text import INTENT_HINTS, detect_facets, expand_query, tokenize
+from llm_speaker_core.taxonomy import FACET_RULES, INTENT_PROFILES, PATH_TOKEN_ALIASES
+from llm_speaker_core.utils.text import detect_facets, detect_intents, expand_query, tokenize
 
-PATH_TOKEN_ALIASES = {
-    "bach": ("бакалавриат", "специалитет", "поступление", "направления"),
-    "mag": ("магистратура", "магистр", "программы"),
-    "dates": ("сроки", "даты", "прием"),
-    "contacts": ("контакты", "телефон", "адрес", "приемная", "комиссия"),
-    "rules": ("правила", "прием", "поступление"),
-    "pay": ("оплата", "стоимость", "обучение"),
-    "pay_edu": ("оплата", "платные", "услуги", "обучение"),
-    "paid_edu": ("оплата", "платные", "услуги", "обучение"),
-    "price": ("стоимость", "цена", "обучение"),
-    "common": ("сведения", "контакты", "адрес", "режим"),
-    "objects": ("общежитие", "корпуса", "объекты", "адрес"),
-    "budget": ("бюджет", "бюджетные", "места"),
-    "grants": ("стипендия", "поддержка"),
-    "studlife": ("студенты", "активности", "объединения", "клубы"),
-    "vrmp": ("воспитательная", "молодежная", "политика"),
-    "tochka": ("точка", "кипения"),
-    "calc": ("направления", "калькулятор", "программы", "профили"),
-    "plan": ("бюджет", "места", "прием"),
-    "pposa": ("объединения", "профком", "самоуправление"),
-    "starsovet": ("объединения", "старостат", "самоуправление"),
-    "domsovet": ("общежитие", "объединения", "самоуправление"),
-    "managers": ("руководство", "сотрудники"),
-    "faq": ("вопросы", "ответы"),
-}
-PREFERRED_SOURCE_HINTS = {
-    "admission": ("priem.guap.ru", "/abitur"),
-    "contacts": (
-        "priem.guap.ru/contacts",
-        "/contacts",
-        "/contact",
-        "/sveden/common",
-        "/sveden/managers",
-    ),
-    "location": ("/sveden/common", "/sveden/objects", "/address", "/contacts"),
-    "student_life": ("/studlife", "/vrmp"),
-    "official_info": ("/sveden", "/document"),
-    "tuition": ("/eif/", "/sveden/pay_edu", "/sveden/paid_edu", "/price", "/pay", "/pol_usl"),
-}
-FACET_RULES = {
-    "admission_directions": {
-        "path_bonus": {"/calc": 0.44, "/bach": 0.18, "/mag": 0.18},
-        "path_penalty": {"/rules": 0.24, "/contacts": 0.16},
-        "page_type_bonus": {"catalog": 0.34, "hub": 0.14},
-        "page_type_penalty": {"policy": 0.22, "contacts": 0.12, "directory": 0.12},
-        "source_facet_bonus": {"admission_directions": 0.44, "admission_bach": 0.14, "admission_mag": 0.14},
-        "source_facet_penalty": {},
-    },
-    "admission_dates": {
-        "path_bonus": {"/dates": 0.62},
-        "path_penalty": {"/rules": 0.34, "/plan": 0.16},
-        "page_type_bonus": {"schedule": 0.46},
-        "page_type_penalty": {"policy": 0.22, "catalog": 0.12, "plan": 0.14},
-        "source_facet_bonus": {"admission_dates": 0.54},
-        "source_facet_penalty": {},
-    },
-    "admission_contacts": {
-        "path_bonus": {"/contacts": 0.62, "priem.guap.ru/contacts": 0.2},
-        "path_penalty": {"/sveden/managers": 0.28, "/fspo": 0.22, "/fdpo": 0.22, "/plan": 0.18, "/exams": 0.18},
-        "page_type_bonus": {"contacts": 0.42},
-        "page_type_penalty": {"directory": 0.28, "hub": 0.12, "plan": 0.16},
-        "source_facet_bonus": {"admission_contacts": 0.58, "contacts": 0.2},
-        "source_facet_penalty": {},
-    },
-    "admission_budget": {
-        "path_bonus": {"/budget": 0.28, "/plan": 0.34},
-        "path_penalty": {"/rules": 0.16},
-        "page_type_bonus": {"plan": 0.34, "reference": 0.14},
-        "page_type_penalty": {"policy": 0.12},
-        "source_facet_bonus": {"admission_budget": 0.42},
-        "source_facet_penalty": {},
-    },
-    "admission_mag": {
-        "path_bonus": {"/mag": 0.34},
-        "path_penalty": {"/bach": 0.18},
-        "page_type_bonus": {"hub": 0.16},
-        "page_type_penalty": {"policy": 0.14},
-        "source_facet_bonus": {"admission_mag": 0.44},
-        "source_facet_penalty": {"admission_bach": 0.18},
-    },
-    "tuition_price": {
-        "path_bonus": {"/price": 0.32, "/paid_edu": 0.22, "/pay_edu": 0.24},
-        "path_penalty": {"/monitor": 0.18, "/rekv": 0.18, "/pol_zak": 0.18},
-        "page_type_bonus": {"document": 0.38, "detail": 0.16, "reference": 0.12},
-        "page_type_penalty": {"hub": 0.08},
-        "source_facet_bonus": {"tuition_price": 0.44, "tuition": 0.12},
-        "source_facet_penalty": {},
-    },
-    "tuition_payment": {
-        "path_bonus": {"/pay": 0.46, "/pol_usl": 0.42, "/inf_dog": 0.3, "/pay_edu": 0.24},
-        "path_penalty": {"/monitor": 0.18, "/price": 0.16, "/form_d": 0.12, "/paid_edu": 0.08},
-        "page_type_bonus": {"policy": 0.18, "detail": 0.28, "document": 0.08, "reference": 0.06},
-        "page_type_penalty": {"hub": 0.08},
-        "source_facet_bonus": {"tuition_payment": 0.5, "tuition": 0.12},
-        "source_facet_penalty": {},
-    },
-    "student_unions": {
-        "path_bonus": {"/pposa": 0.42, "/starsovet": 0.42, "/domsovet": 0.32},
-        "path_penalty": {"/cyber": 0.18, "/design": 0.18, "/evo": 0.12},
-        "page_type_bonus": {"organization": 0.34, "hub": 0.1},
-        "page_type_penalty": {"profile": 0.06},
-        "source_facet_bonus": {"student_unions": 0.44},
-        "source_facet_penalty": {},
-    },
-    "dorm": {
-        "path_bonus": {"/objects": 0.34, "/dom/": 0.28, "/dom/2": 0.42, "/pay_dom": 0.18},
-        "path_penalty": {"/inter/": 0.24},
-        "page_type_bonus": {"facilities": 0.34, "reference": 0.12},
-        "page_type_penalty": {"landing": 0.1},
-        "source_facet_bonus": {"dorm": 0.44, "location": 0.1},
-        "source_facet_penalty": {},
-    },
-    "vrmp": {
-        "path_bonus": {"/vrmp": 0.34, "/vrmp/tochka": 0.34, "/tochka": 0.22},
-        "path_penalty": {"/prioritet2030": 0.26, "/anticor": 0.24, "/eif/": 0.22, "/search": 0.28},
-        "page_type_bonus": {"hub": 0.22, "profile": 0.18},
-        "page_type_penalty": {"faq": 0.18},
-        "source_facet_bonus": {"vrmp": 0.44},
-        "source_facet_penalty": {},
-    },
-}
+
+@dataclass(frozen=True)
+class ScoreBreakdown:
+    semantic_score: float
+    policy_score: float
+    freshness_penalty: float
+    source_penalty: float
+    source_bonus: float
+    facet_bonus: float
+    structural_bonus: float
 
 
 class HybridRetrievalService:
@@ -174,12 +65,7 @@ class HybridRetrievalService:
 
     @staticmethod
     def detect_intents(text: str) -> list[str]:
-        low = text.lower()
-        intents: list[str] = []
-        for intent, hints in INTENT_HINTS.items():
-            if any(h in low for h in hints):
-                intents.append(intent)
-        return intents or ["general"]
+        return detect_intents(text)
 
     def _query_expansions(self, query: str) -> list[str]:
         return expand_query(tokenize(query))
@@ -232,26 +118,25 @@ class HybridRetrievalService:
         bonus = 0.0
         if "guap.ru" in source:
             bonus += 0.08
-        if any(intent == "admission" for intent in intents):
-            if "priem.guap.ru" in source:
-                bonus += 0.26
-            if any(k in source for k in ("/abitur", "/bach", "/mag", "/dates", "/contacts")):
-                bonus += 0.16
-        if any(intent == "tuition" for intent in intents):
-            if any(k in source for k in ("/eif/", "/paid_edu", "/price", "/pay", "/pol_usl")):
-                bonus += 0.22
-        if any(intent == "contacts" for intent in intents):
-            if any(k in source for k in ("/contacts", "/contact", "/sveden/common", "priem.guap.ru/contacts")):
-                bonus += 0.24
-        if any(intent == "location" for intent in intents):
-            if any(k in source for k in ("/sveden/common", "/sveden/objects", "/address")):
-                bonus += 0.22
-        if any(intent == "student_life" for intent in intents):
-            if any(k in source for k in ("/studlife", "/vrmp")):
-                bonus += 0.24
-        if any(intent == "official_info" for intent in intents):
-            if any(k in source for k in ("/sveden", "/document", "/common")):
-                bonus += 0.28
+        for intent in intents:
+            profile = INTENT_PROFILES.get(intent)
+            if not profile or not profile.preferred_source_hints:
+                continue
+            if any(hint in source for hint in profile.preferred_source_hints):
+                if intent == "admission":
+                    bonus += 0.26
+                elif intent == "tuition":
+                    bonus += 0.22
+                elif intent in {"contacts", "organization"}:
+                    bonus += 0.24
+                elif intent == "location":
+                    bonus += 0.22
+                elif intent == "student_life":
+                    bonus += 0.24
+                elif intent == "official_info":
+                    bonus += 0.28
+                else:
+                    bonus += 0.18
         return bonus
 
     def _facet_bonus(self, hit: RetrievalHit, facets: list[str]) -> float:
@@ -302,7 +187,8 @@ class HybridRetrievalService:
         if any(intent in {"admission", "contacts", "official_info"} for intent in intents) and "/faq" in source:
             penalty += 0.12
         for intent in intents:
-            preferred = PREFERRED_SOURCE_HINTS.get(intent)
+            profile = INTENT_PROFILES.get(intent)
+            preferred = profile.preferred_source_hints if profile else ()
             if preferred and not any(hint in source for hint in preferred):
                 penalty += 0.18
         quality_score = float(hit.metadata.get("quality_score", 1.0))
@@ -329,28 +215,52 @@ class HybridRetrievalService:
             )
         return normalized
 
+    def _score_hit(self, query: str, hit: RetrievalHit, intents: list[str], facets: list[str]) -> ScoreBreakdown:
+        freshness_penalty = self._freshness_penalty(hit, intents)
+        source_penalty = self._source_penalty(hit, intents)
+        source_bonus = self._source_bonus(hit, intents)
+        facet_bonus = self._facet_bonus(hit, facets)
+        structural_bonus = self._structural_bonus(query, hit)
+        policy_score = round(
+            -freshness_penalty - source_penalty + source_bonus + facet_bonus + structural_bonus,
+            6,
+        )
+        return ScoreBreakdown(
+            semantic_score=round(hit.score, 6),
+            policy_score=policy_score,
+            freshness_penalty=round(freshness_penalty, 6),
+            source_penalty=round(source_penalty, 6),
+            source_bonus=round(source_bonus, 6),
+            facet_bonus=round(facet_bonus, 6),
+            structural_bonus=round(structural_bonus, 6),
+        )
+
     def _merge_hits(self, query: str, hits: list[RetrievalHit]) -> list[RetrievalHit]:
         intents = self.detect_intents(query)
         facets = self._query_facets(query)
         hits = self._normalize_stage_scores(hits)
         by_chunk: dict[str, RetrievalHit] = {}
         for hit in hits:
-            adjusted = (
-                hit.score
-                - self._freshness_penalty(hit, intents)
-                - self._source_penalty(hit, intents)
-                + self._source_bonus(hit, intents)
-                + self._facet_bonus(hit, facets)
-                + self._structural_bonus(query, hit)
-            )
+            breakdown = self._score_hit(query, hit, intents, facets)
+            adjusted = round(breakdown.semantic_score + breakdown.policy_score, 6)
+            metadata = dict(hit.metadata)
+            metadata["semantic_score"] = breakdown.semantic_score
+            metadata["policy_score"] = breakdown.policy_score
+            metadata["score_components"] = {
+                "freshness_penalty": breakdown.freshness_penalty,
+                "source_penalty": breakdown.source_penalty,
+                "source_bonus": breakdown.source_bonus,
+                "facet_bonus": breakdown.facet_bonus,
+                "structural_bonus": breakdown.structural_bonus,
+            }
             merged = RetrievalHit(
                 chunk_id=hit.chunk_id,
                 doc_id=hit.doc_id,
                 source=hit.source,
                 text=hit.text,
-                score=round(adjusted, 6),
+                score=adjusted,
                 retrieval_stage=hit.retrieval_stage,
-                metadata=dict(hit.metadata),
+                metadata=metadata,
             )
             current = by_chunk.get(hit.chunk_id)
             if current is None or merged.score > current.score:
@@ -366,7 +276,7 @@ class HybridRetrievalService:
         for hit in hits:
             if hit.chunk_id in seen_chunks:
                 continue
-            if seen_sources.get(hit.source, 0) >= 1:
+            if seen_sources.get(hit.source, 0) >= 2:
                 continue
             diversified.append(hit)
             seen_sources[hit.source] = seen_sources.get(hit.source, 0) + 1
@@ -438,9 +348,12 @@ class HybridRetrievalService:
         dense = DenseIndex.build(chunks, embedding_model)
         dense.save(dense_path)
         reranker = CrossEncoderReranker(reranker_model)
+        corpus_checksum = hashlib.sha256(
+            "".join(chunk.content_hash for chunk in chunks).encode("utf-8")
+        ).hexdigest()[:16]
         manifest = IndexManifest(
             version=cls.version,
-            corpus_checksum=str(abs(hash("".join(chunk.content_hash for chunk in chunks))) % (10**16)),
+            corpus_checksum=corpus_checksum,
             lexical_path=str(lexical_path.relative_to(manifest_path.parent)),
             dense_path=str(dense_path.relative_to(manifest_path.parent)),
             reranker_model=reranker_model,

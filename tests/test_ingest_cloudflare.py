@@ -31,6 +31,23 @@ def test_document_from_cloudflare_record_extracts_text_and_links() -> None:
     assert doc.metadata["document_links"] == ["https://guap.ru/priem/rules.pdf"]
 
 
+def test_document_from_cloudflare_record_keeps_subdomain_document_links() -> None:
+    record = {
+        "url": "https://guap.ru/library",
+        "title": "Библиотека ГУАП",
+        "markdown": (
+            "# Библиотека\n\n"
+            "Официальные документы библиотеки.\n\n"
+            "[Правила пользования](https://lib.guap.ru/docs/rules.pdf)"
+        ),
+    }
+
+    doc = document_from_cloudflare_record(record, crawl_job_id="job-subdomain")
+
+    assert doc is not None
+    assert doc.metadata["document_links"] == ["https://lib.guap.ru/docs/rules.pdf"]
+
+
 def test_document_from_cloudflare_record_trims_header_and_footer_noise() -> None:
     record = {
         "url": "https://guap.ru/faq",
@@ -114,3 +131,27 @@ def test_build_chunk_corpus_keeps_specific_dorm_page() -> None:
 
     assert chunks
     assert chunks[0].canonical_url == "https://guap.ru/dom/2"
+
+
+def test_build_chunk_corpus_keeps_short_official_org_page() -> None:
+    doc = document_from_cloudflare_record(
+        {
+            "url": "https://guap.ru/struct/hr",
+            "title": "Отдел кадров",
+            "markdown": (
+                "# Отдел кадров\n\n"
+                "Телефон: +7 (812) 000-00-00\n\n"
+                "Режим работы: пн-пт 10:00-18:00."
+            ),
+        }
+    )
+
+    assert doc is not None
+    assert "org_unit" in doc.metadata["source_facets"]
+    assert doc.is_low_text is False
+    assert doc.is_low_signal is False
+
+    chunks = build_chunk_corpus([doc])
+
+    assert chunks
+    assert chunks[0].canonical_url == "https://guap.ru/struct/hr"

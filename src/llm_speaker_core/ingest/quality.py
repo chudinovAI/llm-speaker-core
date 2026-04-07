@@ -5,11 +5,15 @@ import re
 from urllib.parse import urlparse
 
 from llm_speaker_core.retrieval.schemas import DocumentRecord
+from llm_speaker_core.taxonomy import (
+    classify_page_type,
+    classify_source_facets,
+    is_officialish_page,
+)
 
 NAVIGATION_MARKERS = {
     "главная",
     "подробнее",
-    "расписание",
     "контакты",
     "обучающимся",
     "абитуриентам",
@@ -23,103 +27,6 @@ BOILERPLATE_MARKERS = (
     "политика обработки персональных данных",
     "сведения об образовательной организации",
 )
-
-
-def _classify_page_type(doc: DocumentRecord) -> str:
-    parsed = urlparse(doc.canonical_url)
-    host = parsed.netloc.lower()
-    path = parsed.path.rstrip("/") or "/"
-    title = doc.title.lower()
-    if doc.source_type == "doc":
-        return "document"
-    if path.endswith("/faq") or "вопросы и ответы" in title:
-        return "faq"
-    if path.endswith("/contacts") or "как нас найти" in title or "приемная комиссия" in title:
-        return "contacts"
-    if path.endswith("/rules") or "правила приема" in title or "положение" in title:
-        return "policy"
-    if path.endswith("/dates") or "сроки проведения приема" in title:
-        return "schedule"
-    if path.endswith("/calc") or "калькулятор" in title:
-        return "catalog"
-    if path.endswith("/plan") or path.endswith("/budget") or "количество мест" in title:
-        return "plan"
-    if path.endswith("/managers") or path.endswith("/employees"):
-        return "directory"
-    if path.endswith("/common") or path.endswith("/document") or path.endswith("/paid_edu") or path.endswith("/pay_edu"):
-        return "reference"
-    if path.startswith("/dom/") or path.endswith("/objects") or "общежит" in title or "материально-техническое обеспечение" in title:
-        return "facilities"
-    if any(path == value for value in ("/studlife", "/vrmp", "/sveden", "/eif", "/bach", "/mag", "/")):
-        return "hub"
-    if any(path.endswith(value) for value in ("/pposa", "/starsovet", "/domsovet")):
-        return "organization"
-    if path.startswith("/studlife/") or path.startswith("/vrmp/"):
-        return "profile"
-    return "detail"
-
-
-def _classify_source_facets(doc: DocumentRecord) -> list[str]:
-    facets: set[str] = set()
-    parsed = urlparse(doc.canonical_url)
-    host = parsed.netloc.lower()
-    path = parsed.path.rstrip("/") or "/"
-    low_title = doc.title.lower()
-    low_text = doc.text.lower()
-    full_text = f"{low_title}\n{low_text}"
-    if host == "priem.guap.ru" or path.startswith("/bach") or path.startswith("/mag"):
-        facets.add("admission")
-    if path.startswith("/bach"):
-        facets.add("admission_bach")
-    if path.startswith("/mag"):
-        facets.add("admission_mag")
-    if path.endswith("/calc") or "калькулятор" in low_title:
-        facets.add("admission_directions")
-    if path.endswith("/dates") or "сроки" in low_title:
-        facets.add("admission_dates")
-    if host == "priem.guap.ru" and (
-        path.endswith("/contacts") or "приемная комиссия" in full_text or "как нас найти" in full_text
-    ):
-        facets.add("admission_contacts")
-        facets.add("contacts")
-    elif (
-        path.endswith("/contacts")
-        or "контакты" in full_text
-        or "телефон:" in full_text
-        or "эл. почта" in full_text
-        or "@guap.ru" in full_text
-    ):
-        facets.add("contacts")
-    if path.endswith("/budget") or path.endswith("/plan") or "количество мест" in low_title:
-        facets.add("admission_budget")
-    if path.startswith("/eif") or path.startswith("/sveden/pay") or path.startswith("/sveden/paid"):
-        facets.add("tuition")
-    if (
-        path.endswith("/price")
-        or path.endswith("/paid_edu")
-        or path.endswith("/pay_edu")
-        or "цены обучения" in low_text
-        or "стоимость обучения" in low_text
-    ):
-        facets.add("tuition_price")
-    if path.endswith("/pay") or path.endswith("/pol_usl") or path.endswith("/inf_dog") or "оплата обучения" in low_title:
-        facets.add("tuition_payment")
-    if path.startswith("/sveden"):
-        facets.add("official_info")
-    if path.endswith("/common") or "адрес" in low_title:
-        facets.add("location")
-    if path.startswith("/dom/") or path.endswith("/objects") or "общежит" in full_text:
-        facets.add("dorm")
-        facets.add("location")
-    if path.startswith("/studlife"):
-        facets.add("student_life")
-    if any(path.endswith(value) for value in ("/pposa", "/starsovet", "/domsovet")) or any(
-        marker in low_title for marker in ("самоуправление", "профком", "совет старост", "советы общежитий")
-    ):
-        facets.add("student_unions")
-    if path.startswith("/vrmp") or "врмп" in low_title:
-        facets.add("vrmp")
-    return sorted(facets)
 
 
 def detect_language(text: str) -> str:
@@ -144,25 +51,34 @@ def assess_document_quality(doc: DocumentRecord) -> DocumentRecord:
     text = doc.text.strip()
     flags: set[str] = set(doc.quality_flags)
     path = urlparse(doc.canonical_url).path.rstrip("/") or "/"
+    page_type = classify_page_type(doc.source_type, doc.canonical_url, doc.title, text)
+    source_facets = classify_source_facets(doc.canonical_url, doc.title, text)
+    officialish = is_officialish_page(
+        source_type=doc.source_type,
+        canonical_url=doc.canonical_url,
+        title=doc.title,
+        text=text,
+        page_type=page_type,
+        source_facets=source_facets,
+    )
 
-    if len(text) < 120:
+    if len(text) < 120 and not officialish:
         flags.add("is_low_text")
     if detect_language(text) != "ru":
         flags.add("is_foreign_language")
     low = text.lower()
-    if sum(marker in low for marker in NAVIGATION_MARKERS) >= 3:
+    navigation_hits = sum(marker in low for marker in NAVIGATION_MARKERS)
+    if navigation_hits >= 3 and page_type not in {"contacts", "directory", "reference"} and "org_unit" not in source_facets:
         flags.add("is_navigation")
     if any(marker in path for marker in LOW_SIGNAL_PATH_MARKERS):
         flags.add("is_low_priority_source")
     if path.endswith("/sitemap"):
         flags.add("is_navigation")
         flags.add("is_low_signal")
-    if low.count("гуап") == 0 and doc.source_type == "web":
+    if low.count("гуап") == 0 and doc.source_type == "web" and not officialish:
         flags.add("is_low_signal")
     if sum(marker in low for marker in BOILERPLATE_MARKERS) >= 3:
         flags.add("is_boilerplate_heavy")
-    page_type = _classify_page_type(doc)
-    source_facets = _classify_source_facets(doc)
     quality_score = 1.0
     if "is_low_text" in flags:
         quality_score -= 0.25

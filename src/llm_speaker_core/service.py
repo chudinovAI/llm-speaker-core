@@ -4,10 +4,11 @@ import logging
 import re
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 from llm_speaker_core.settings import SETTINGS
+from llm_speaker_core.taxonomy import INTENT_PROFILES, IntentProfile
 from llm_speaker_core.utils.text import detect_facets, expand_query, tokenize
 
 logger = logging.getLogger(__name__)
@@ -30,128 +31,6 @@ LOW_SIGNAL_QUERY_STEMS = (
     "вопрос",
     "ответ",
 )
-STRICT_FACETS = {
-    "admission_dates",
-    "admission_contacts",
-    "tuition_price",
-    "tuition_payment",
-    "student_unions",
-    "dorm",
-    "vrmp",
-}
-LOW_TRUST_OPERATIONAL_SOURCE_HINTS = (
-    "/science/",
-    "/pubs/",
-    "/targets/",
-    "/mission",
-    "/search",
-)
-
-
-@dataclass(frozen=True)
-class IntentRule:
-    fact_tokens: set[str] = field(default_factory=set)
-    trusted_source_hints: tuple[str, ...] = ()
-    allowed_source_hints: tuple[str, ...] = ()
-    denied_source_hints: tuple[str, ...] = ()
-    noisy_sentence_markers: tuple[str, ...] = ()
-    query_boost_terms: tuple[str, ...] = ()
-    display_summary: str = ""
-    speaker_summary: str = ""
-    min_evidence_for_freeform: float = 0.35
-    min_fact_token_hits: int = 2
-
-
-INTENT_RULES: dict[str, IntentRule] = {
-    "tuition": IntentRule(
-        fact_tokens={
-            "стоимость",
-            "цена",
-            "оплата",
-            "договор",
-            "руб",
-            "обучение",
-            "платное",
-        },
-        trusted_source_hints=(
-            "/eif/pay",
-            "/eif/inf_dog",
-            "/eif/price",
-            "/eif/pol_usl",
-            "/sveden/paid_edu",
-            "/priem",
-            "/abitur",
-        ),
-        allowed_source_hints=(
-            "/eif/pay",
-            "/eif/inf_dog",
-            "/eif/price",
-            "/eif/pol_usl",
-            "/sveden/paid_edu",
-            "/priem",
-            "/abitur",
-        ),
-        denied_source_hints=("/sveden/inter",),
-        noisy_sentence_markers=(
-            "кнр",
-            "сиань",
-            "обучение заграницей",
-            "договор о сотрудничестве",
-            "мониторинг до",
-        ),
-        query_boost_terms=("стоимость", "оплата", "договор", "платное образование"),
-        display_summary=(
-            "**Стоимость обучения в ГУАП зависит от программы и формы обучения.**\n"
-            "Актуальные цены и условия оплаты смотрите в разделе платных образовательных услуг."
-        ),
-        speaker_summary="Стоимость зависит от программы и формы; актуально в разделе платных услуг ГУАП.",
-        min_evidence_for_freeform=0.3,
-        min_fact_token_hits=2,
-    ),
-    "admission": IntentRule(
-        fact_tokens={"баллы", "абитуриент", "документы", "направления", "поступление"},
-        trusted_source_hints=("/abitur", "/priem", "/admission", "/sveden"),
-        query_boost_terms=("приемная комиссия", "документы", "сроки приема"),
-        display_summary=(
-            "Условия поступления зависят от программы и уровня обучения. "
-            "Проверьте актуальные правила и сроки в разделе для абитуриентов."
-        ),
-        speaker_summary="Проверьте актуальные правила и сроки в разделе для абитуриентов ГУАП.",
-        min_evidence_for_freeform=0.32,
-        min_fact_token_hits=2,
-    ),
-    "contacts": IntentRule(
-        fact_tokens={"контакты", "телефон", "почта", "email", "комиссия", "приемная"},
-        trusted_source_hints=(
-            "/sveden/common",
-            "/contacts",
-            "/contact",
-            "/abitur",
-            "new.guap.ru/",
-            "/empbook",
-            "lib.guap.ru",
-            "/med/struct",
-        ),
-        query_boost_terms=("контакты", "телефон", "адрес"),
-        display_summary="Актуальные контакты лучше смотреть в официальном разделе сведений и контактов ГУАП.",
-        speaker_summary="Актуальные контакты смотрите в официальном разделе контактов ГУАП.",
-    ),
-    "location": IntentRule(
-        fact_tokens={"адрес", "корпус", "кампус"},
-        trusted_source_hints=("/sveden/common", "/contacts", "/address", "/objects"),
-        query_boost_terms=("адрес", "корпус", "кампус"),
-        display_summary="Адреса и корпуса университета доступны в официальном разделе сведений ГУАП.",
-        speaker_summary="Актуальные адреса и корпуса смотрите в официальных сведениях ГУАП.",
-    ),
-    "student_life": IntentRule(
-        fact_tokens={"студенты", "клуб", "театр", "спорт", "активности"},
-        trusted_source_hints=("/studlife", "/students", "/clubs", "/sport"),
-        denied_source_hints=("/it/service/",),
-        query_boost_terms=("студенческие активности", "клубы", "спорт", "театр"),
-        display_summary="Студенческие активности включают клубы, спорт и творческие объединения ГУАП.",
-        speaker_summary="Студенческие активности ГУАП включают клубы, спорт и творческие объединения.",
-    ),
-}
 
 
 @dataclass
@@ -207,32 +86,11 @@ class SessionMemory:
         self._store[session_id] = history[-max_messages:]
 
 
-class Metrics:
-    def __init__(self) -> None:
-        self.requests = 0
-        self.fallbacks = 0
-        self.empty_speaker = 0
-        self.rag_hits = 0
-
-    def snapshot(self) -> dict[str, int]:
-        return {
-            "requests": self.requests,
-            "fallbacks": self.fallbacks,
-            "empty_speaker": self.empty_speaker,
-            "rag_hits": self.rag_hits,
-        }
-
-
 class LLMService:
-    def __init__(
-        self, rag: RetrievalProtocol, llm: LLMProtocol, speaker_mode: str | None = None
-    ) -> None:
+    def __init__(self, rag: RetrievalProtocol, llm: LLMProtocol) -> None:
         self.rag = rag
         self.llm = llm
         self.memory = SessionMemory(max_turns=SETTINGS.max_memory_turns)
-        self.metrics = Metrics()
-        mode = (speaker_mode or SETTINGS.speaker_mode).lower()
-        self.speaker_mode = mode if mode in {"local", "llm"} else "local"
 
     def _build_combined_system_prompt(self) -> str:
         return (
@@ -311,14 +169,6 @@ class LLMService:
         )
         stripped = re.sub(prefix, "", text, count=1, flags=re.IGNORECASE)
         return stripped.strip() if stripped.strip() else text.strip()
-
-    def _to_plain_text(self, text: str) -> str:
-        text = re.sub(r"[*_`#>-]", "", text)
-        text = re.sub(
-            r"\bСанкт[\s-]?Петербург", "Санкт-Петербург", text, flags=re.IGNORECASE
-        )
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
 
     def _strip_markdown_for_speech(self, text: str) -> str:
         """Plain Russian for TTS: no markdown links, no URLs, no **/__."""
@@ -538,8 +388,8 @@ class LLMService:
             return "general"
         return intents[0]
 
-    def _intent_rule(self, intent: str) -> IntentRule:
-        return INTENT_RULES.get(intent, IntentRule())
+    def _intent_profile(self, intent: str) -> IntentProfile:
+        return INTENT_PROFILES.get(intent, IntentProfile())
 
     def _matches_any_hint(self, source: str, hints: tuple[str, ...]) -> bool:
         if not hints:
@@ -550,7 +400,7 @@ class LLMService:
     def _estimate_evidence_coverage(self, text: str, rag_chunks: list[dict]) -> float:
         intent = self._primary_intent(text)
         query_tokens = set(expand_query(tokenize(text)))
-        fact_tokens = self._intent_rule(intent).fact_tokens
+        fact_tokens = set(self._intent_profile(intent).fact_tokens)
         if fact_tokens:
             prioritized = {t for t in query_tokens if t in fact_tokens}
             if prioritized:
@@ -643,39 +493,24 @@ class LLMService:
                 facet == "dorm"
                 and "location" in source_facets
             )
+            or (
+                facet == "org_contacts"
+                and {"contacts", "org_unit", "org_schedule"} & source_facets
+            )
+            or (
+                facet == "org_schedule"
+                and {"org_contacts", "org_unit", "contacts"} & source_facets
+            )
+            or (
+                facet == "org_staff"
+                and {"org_unit", "org_contacts"} & source_facets
+            )
+            or (
+                facet == "org_unit"
+                and {"org_contacts", "org_schedule", "org_staff"} & source_facets
+            )
         }
         return round(len(matched) / max(len(query_facets), 1), 4)
-
-    def _is_operational_query(self, text: str) -> bool:
-        low = text.lower()
-        return any(
-            marker in low
-            for marker in (
-                "распис",
-                "режим",
-                "работ",
-                "когда",
-                "где",
-                "контакт",
-                "телефон",
-                "почт",
-                "email",
-                "связ",
-                "адрес",
-                "кабинет",
-            )
-        )
-
-    def _has_low_trust_operational_sources(self, rag_chunks: list[dict]) -> bool:
-        sources = [str(chunk.get("source", "")).lower() for chunk in rag_chunks[:3]]
-        if not sources:
-            return False
-        suspicious = sum(
-            1
-            for source in sources
-            if any(hint in source for hint in LOW_TRUST_OPERATIONAL_SOURCE_HINTS)
-        )
-        return suspicious >= max(1, len(sources) // 2)
 
     def _passes_grounding_guard(
         self,
@@ -753,9 +588,9 @@ class LLMService:
         if not rag_chunks:
             return ""
 
-        rule = self._intent_rule(intent)
+        rule = self._intent_profile(intent)
         query_tokens = set(expand_query(tokenize(text)))
-        fact_tokens = rule.fact_tokens
+        fact_tokens = set(rule.fact_tokens)
         if fact_tokens:
             focused = {t for t in query_tokens if t in fact_tokens}
             if focused:
@@ -835,7 +670,7 @@ class LLMService:
         return " ".join(chosen).strip()
 
     def _has_high_trust_source(self, intent: str, rag_chunks: list[dict]) -> bool:
-        hints = self._intent_rule(intent).trusted_source_hints
+        hints = self._intent_profile(intent).trusted_source_hints
         if not hints:
             return False
         for chunk in rag_chunks:
@@ -844,17 +679,10 @@ class LLMService:
                 return True
         return False
 
-    def _has_any_source_facet(self, rag_chunks: list[dict], expected: set[str]) -> bool:
-        for chunk in rag_chunks[:3]:
-            source_facets = {str(value) for value in chunk.get("source_facets", [])}
-            if source_facets & expected:
-                return True
-        return False
-
     def _apply_intent_speaker_policy(
         self, intent: str, speaker_text: str, rag_sources: list[str], display_text: str
     ) -> str:
-        rule = self._intent_rule(intent)
+        rule = self._intent_profile(intent)
         if not rule.speaker_summary:
             return speaker_text
 
@@ -880,7 +708,7 @@ class LLMService:
         rag_sources: list[str],
         evidence_coverage: float,
     ) -> str:
-        rule = self._intent_rule(intent)
+        rule = self._intent_profile(intent)
         if not rule.display_summary:
             return display_text
 
@@ -888,7 +716,7 @@ class LLMService:
         fact_token_hits = 0
         if rule.fact_tokens:
             display_tokens = set(tokenize(display_text))
-            fact_token_hits = len(display_tokens & rule.fact_tokens)
+            fact_token_hits = len(display_tokens & set(rule.fact_tokens))
         has_specific_number = bool(
             re.search(r"\b\d[\d\s]{2,}\s*(руб|₽|год|г\.)\b", low)
         )
@@ -935,7 +763,7 @@ class LLMService:
     def _filter_rag_chunks_by_intent(
         self, intent: str, rag_chunks: list[dict]
     ) -> list[dict]:
-        rule = self._intent_rule(intent)
+        rule = self._intent_profile(intent)
         if not rule.allowed_source_hints and not rule.denied_source_hints:
             return rag_chunks
 
@@ -986,7 +814,7 @@ class LLMService:
         low = text.lower()
         base_markers = {"адрес", "контакт", "связ", "дата", "когда", "основан", "где"}
         dynamic_markers: set[str] = set(base_markers)
-        for rule in INTENT_RULES.values():
+        for rule in INTENT_PROFILES.values():
             for token in rule.fact_tokens:
                 if len(token) >= 4:
                     dynamic_markers.add(token[:5])
@@ -997,7 +825,7 @@ class LLMService:
             return rag_chunks
 
         intent = self._primary_intent(text)
-        rule = self._intent_rule(intent)
+        rule = self._intent_profile(intent)
         if not rule.query_boost_terms:
             return rag_chunks
 
@@ -1171,13 +999,6 @@ class LLMService:
         )
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-
-        self.metrics.requests += 1
-        self.metrics.rag_hits += rag_hits
-        if fallback_used:
-            self.metrics.fallbacks += 1
-        if not speaker_text:
-            self.metrics.empty_speaker += 1
 
         return GenerationResult(
             display_text=display_text,

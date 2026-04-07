@@ -418,3 +418,46 @@ def test_hybrid_search_uses_numeric_bonus_for_dorm_number() -> None:
 
     assert hits
     assert hits[0]["source"] == "https://guap.ru/dom/2"
+
+
+def test_hybrid_search_prefers_org_schedule_page_for_operational_query() -> None:
+    chunks = [
+        _chunk(
+            "doc1:0",
+            "Научная статья про расписание вычислительных задач и работу отделов в распределенной сети.",
+            "https://guap.ru/science/projects",
+            "science",
+            title="Научные проекты",
+            metadata={"page_type": "detail", "source_facets": []},
+        ),
+        _chunk(
+            "doc2:0",
+            "Отдел кадров ГУАП. Телефон, кабинет и режим работы: понедельник-пятница с 10 до 18.",
+            "https://guap.ru/struct/hr",
+            "struct",
+            title="Отдел кадров",
+            metadata={
+                "page_type": "contacts",
+                "source_facets": ["org_unit", "org_contacts", "org_schedule", "contacts"],
+            },
+        ),
+    ]
+    lexical = LexicalIndex.build(chunks)
+    manifest = IndexManifest(
+        version="hybrid-rag-v3",
+        corpus_checksum="org-schedule",
+        lexical_path="unused.json",
+        dense_path=None,
+        reranker_model="",
+        embedding_model="",
+        built_at="2026-04-07T00:00:00Z",
+        doc_count=2,
+        chunk_count=2,
+        metadata={},
+    )
+    service = HybridRetrievalService(lexical=lexical, dense=None, reranker=None, manifest=manifest)
+
+    hits = service.search("Какой режим работы отдела кадров ГУАП?", top_k=2)
+
+    assert hits
+    assert hits[0]["source"] == "https://guap.ru/struct/hr"

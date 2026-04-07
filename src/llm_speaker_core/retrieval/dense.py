@@ -5,6 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 
@@ -23,6 +24,9 @@ except Exception:  # noqa: BLE001
     SentenceTransformer = None  # type: ignore[assignment,misc]
 
 QUERY_PROMPT = "Instruct: Дан вопрос, необходимо найти абзац текста с ответом\nQuery: "
+_MODEL_CACHE: dict[str, object] = {}
+_DIM_CACHE: dict[str, int] = {}
+_MODEL_CACHE_LOCK = Lock()
 
 
 class DenseEncoder:
@@ -31,18 +35,24 @@ class DenseEncoder:
         self.dimension = dimension
         self.batch_size = 4
         self._model = None
+        self.device = "cpu"
 
         if SentenceTransformer is not None:
             try:
-                os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-                self._model = SentenceTransformer(
-                    model_name,
-                    trust_remote_code=True,
-                )
-                self._model.max_seq_length = 4096
-                test_vec = self._model.encode(["test"])
-                self.dimension = int(test_vec.shape[1])
-                logger.info("DenseEncoder loaded %s (dim=%d)", model_name, self.dimension)
+                with _MODEL_CACHE_LOCK:
+                    cached_model = _MODEL_CACHE.get(model_name)
+                    cached_dim = _DIM_CACHE.get(model_name)
+                    if cached_model is None:
+                        cached_model, cached_dim, device = self._load_model_with_fallback(model_name)
+                        _MODEL_CACHE[model_name] = cached_model
+                        _DIM_CACHE[model_name] = cached_dim
+                        logger.info("DenseEncoder loaded %s (dim=%d, device=%s)", model_name, cached_dim, device)
+                    else:
+                        device = "gpu_or_auto"
+                self._model = cached_model
+                if cached_dim is not None:
+                    self.dimension = cached_dim
+                self.device = device
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "Failed to load dense model %s, dense retrieval disabled",
@@ -51,6 +61,38 @@ class DenseEncoder:
                 self._model = None
 
         self.available = self._model is not None
+        if self.device == "cpu":
+            self.batch_size = 1
+
+    @staticmethod
+    def _instantiate_model(model_name: str, *, device: str | None = None) -> object:
+        kwargs: dict[str, object] = {
+            "trust_remote_code": True,
+        }
+        if device is not None:
+            kwargs["device"] = device
+        return SentenceTransformer(model_name, **kwargs)
+
+    def _load_model_with_fallback(self, model_name: str) -> tuple[object, int, str]:
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        try:
+            model = self._instantiate_model(model_name)
+            model.max_seq_length = 4096
+            test_vec = model.encode(["test"])
+            return model, int(test_vec.shape[1]), "auto"
+        except Exception as exc:  # noqa: BLE001
+            if "out of memory" not in str(exc).lower():
+                raise
+            logger.warning("Dense model %s hit OOM on default device, retrying on CPU", model_name, exc_info=True)
+            if hasattr(__import__("torch"), "cuda"):
+                try:
+                    __import__("torch").cuda.empty_cache()
+                except Exception:  # noqa: BLE001
+                    pass
+            model = self._instantiate_model(model_name, device="cpu")
+            model.max_seq_length = 4096
+            test_vec = model.encode(["test"])
+            return model, int(test_vec.shape[1]), "cpu"
 
     def encode_documents(self, texts: list[str]) -> np.ndarray:
         if not texts:
@@ -87,6 +129,8 @@ class DenseIndex:
     vectors: np.ndarray
     model_name: str
     available: bool = True
+    _faiss_index: object | None = None
+    _encoder: DenseEncoder | None = None
 
     @classmethod
     def build(cls, chunks: list[ChunkRecord], model_name: str) -> "DenseIndex":
@@ -100,20 +144,39 @@ class DenseIndex:
                 available=False,
             )
         vectors = encoder.encode_documents([chunk.text for chunk in chunks])
-        return cls(chunks=chunks, vectors=vectors, model_name=model_name, available=True)
+        index = cls(chunks=chunks, vectors=vectors, model_name=model_name, available=True)
+        index._encoder = encoder
+        index._faiss_index = index._build_faiss_index()
+        return index
+
+    def _get_encoder(self) -> DenseEncoder:
+        if self._encoder is None:
+            self._encoder = DenseEncoder(self.model_name, dimension=int(self.vectors.shape[1]))
+        return self._encoder
+
+    def _build_faiss_index(self) -> object | None:
+        if faiss is None or self.vectors.size == 0 or not self.available:
+            return None
+        index = faiss.IndexFlatIP(self.vectors.shape[1])
+        index.add(self.vectors)
+        return index
+
+    def _get_faiss_index(self) -> object | None:
+        if self._faiss_index is None:
+            self._faiss_index = self._build_faiss_index()
+        return self._faiss_index
 
     def search(self, query: str, top_k: int = 8) -> list[RetrievalHit]:
         if not self.chunks or not self.available:
             return []
-        encoder = DenseEncoder(self.model_name, dimension=int(self.vectors.shape[1]))
+        encoder = self._get_encoder()
         if not encoder.available:
             return []
         q = encoder.encode_queries([query])
         if q.size == 0:
             return []
-        if faiss is not None and self.vectors.size > 0:
-            index = faiss.IndexFlatIP(self.vectors.shape[1])
-            index.add(self.vectors)
+        index = self._get_faiss_index()
+        if index is not None:
             scores, indices = index.search(q, top_k)
             idxs = indices[0].tolist()
             vals = scores[0].tolist()
@@ -149,9 +212,8 @@ class DenseIndex:
             "chunks": [chunk.__dict__ for chunk in self.chunks],
         }
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        if faiss is not None and self.vectors.size > 0 and self.available:
-            index = faiss.IndexFlatIP(self.vectors.shape[1])
-            index.add(self.vectors)
+        index = self._get_faiss_index()
+        if index is not None:
             faiss.write_index(index, str(path.with_suffix(".faiss")))
 
     @classmethod
@@ -159,9 +221,16 @@ class DenseIndex:
         payload = json.loads(path.read_text(encoding="utf-8"))
         chunks = [ChunkRecord(**row) for row in payload["chunks"]]
         vectors = np.load(path.with_suffix(".vectors.npy"))
-        return cls(
+        index = cls(
             chunks=chunks,
             vectors=vectors.astype(np.float32),
             model_name=str(payload["model_name"]),
             available=bool(payload.get("available", True)),
         )
+        faiss_path = path.with_suffix(".faiss")
+        if faiss is not None and faiss_path.exists():
+            try:
+                index._faiss_index = faiss.read_index(str(faiss_path))
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to load FAISS index from %s", faiss_path, exc_info=True)
+        return index
