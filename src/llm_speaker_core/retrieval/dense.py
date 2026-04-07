@@ -23,7 +23,13 @@ try:
 except Exception:  # noqa: BLE001
     SentenceTransformer = None  # type: ignore[assignment,misc]
 
+try:
+    import torch
+except Exception:  # noqa: BLE001
+    torch = None  # type: ignore[assignment,misc]
+
 QUERY_PROMPT = "Instruct: Дан вопрос, необходимо найти абзац текста с ответом\nQuery: "
+MAX_SEQ_LENGTH = 1024
 _MODEL_CACHE: dict[str, object] = {}
 _DIM_CACHE: dict[str, int] = {}
 _MODEL_CACHE_LOCK = Lock()
@@ -33,7 +39,7 @@ class DenseEncoder:
     def __init__(self, model_name: str, dimension: int = 2048) -> None:
         self.model_name = model_name
         self.dimension = dimension
-        self.batch_size = 4
+        self.batch_size = 8
         self._model = None
         self.device = "cpu"
 
@@ -62,13 +68,15 @@ class DenseEncoder:
 
         self.available = self._model is not None
         if self.device == "cpu":
-            self.batch_size = 1
+            self.batch_size = 4
 
     @staticmethod
     def _instantiate_model(model_name: str, *, device: str | None = None) -> object:
         kwargs: dict[str, object] = {
             "trust_remote_code": True,
         }
+        if torch is not None and torch.cuda.is_available():
+            kwargs["model_kwargs"] = {"torch_dtype": torch.bfloat16}
         if device is not None:
             kwargs["device"] = device
         return SentenceTransformer(model_name, **kwargs)
@@ -77,20 +85,20 @@ class DenseEncoder:
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
         try:
             model = self._instantiate_model(model_name)
-            model.max_seq_length = 4096
+            model.max_seq_length = MAX_SEQ_LENGTH
             test_vec = model.encode(["test"])
             return model, int(test_vec.shape[1]), "auto"
         except Exception as exc:  # noqa: BLE001
             if "out of memory" not in str(exc).lower():
                 raise
             logger.warning("Dense model %s hit OOM on default device, retrying on CPU", model_name, exc_info=True)
-            if hasattr(__import__("torch"), "cuda"):
+            if torch is not None and hasattr(torch, "cuda"):
                 try:
-                    __import__("torch").cuda.empty_cache()
+                    torch.cuda.empty_cache()
                 except Exception:  # noqa: BLE001
                     pass
             model = self._instantiate_model(model_name, device="cpu")
-            model.max_seq_length = 4096
+            model.max_seq_length = MAX_SEQ_LENGTH
             test_vec = model.encode(["test"])
             return model, int(test_vec.shape[1]), "cpu"
 
