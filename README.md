@@ -38,10 +38,11 @@ uv run llm-voice-stack --list-devices
 
 uv run llm-voice-stack \
  --asr-device 0 \
- --tts-play \
  --wake-word "привет гуап" \
  --no-speaker-verify
 ```
+
+Звук в динамики включён по умолчанию; только запись WAV без проигрывания: `--no-tts-play`.
 
 ## Retrieval modes
 

@@ -24,7 +24,7 @@ class AppSettings:
     speaker_mode: str = "local"
     max_memory_turns: int = 5
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3.5:9b"
+    ollama_model: str = "qwen3.5:2b"
     # 9b и «llm» speaker дают 2 запроса подряд — нужен запас; иначе таймаут до ответа в логах.
     llm_timeout_s: float = 180.0
     fallback_text: str = (

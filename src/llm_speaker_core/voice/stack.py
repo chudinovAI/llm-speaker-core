@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tts-device", type=str, default="cpu")
     parser.add_argument("--tts-speed", type=float, default=1.0)
     parser.add_argument(
-        "--tts-play", action="store_true", help="Play TTS through the local speaker."
+        "--no-tts-play",
+        action="store_true",
+        help="Only save WAV under runtime/tts; do not play through the speaker.",
     )
     parser.add_argument(
         "--retrieval-mode",
@@ -106,7 +108,7 @@ def main() -> None:
         from_start=False,
         tts_enabled=True,
         tts_output_dir=paths.tts_dir,
-        tts_play=args.tts_play,
+        tts_play=not args.no_tts_play,
         tts_speaker=args.tts_speaker,
         tts_sample_rate=args.tts_sample_rate,
         tts_device=args.tts_device,

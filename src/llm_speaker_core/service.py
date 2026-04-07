@@ -239,11 +239,13 @@ class LLMService:
             "Ты голосовой ассистент ГУАП (Санкт-Петербургский государственный "
             "университет аэрокосмического приборостроения). "
             "Отвечай на русском языке, кратко и по делу. "
-            "Используй информацию из контекста. "
-            "Если точного ответа нет — расскажи что знаешь по теме и подскажи "
-            "куда обратиться (сайт, телефон, email из контекста). "
+            "Используй только фрагменты контекста, которые прямо относятся к вопросу. "
+            "Не копируй подвал сайта, меню и длинные списки ссылок вида [текст](url). "
+            "Не пересказывай случайные новости и чужие имена, если они не отвечают на вопрос. "
+            "Если точного ответа нет — скажи это коротко и дай 1–2 полезные ссылки из контекста "
+            "(например библиотека lib.guap.ru, расписание guap.ru/rasp), без простыни ссылок. "
             "Не начинай ответ с расшифровки аббревиатуры ГУАП. "
-            "Формат: короткие абзацы, **жирный** для ключевого. Без HTML."
+            "Формат: 2–4 предложения, **жирный** для ключевого. Без HTML."
         )
 
     def _build_speaker_system_prompt(self) -> str:
@@ -265,6 +267,27 @@ class LLMService:
         )
         return text.strip()
 
+    def _strip_nav_link_soup(self, text: str) -> str:
+        """Remove footer-style markdown link dumps the model sometimes pastes."""
+        text = text.strip()
+        if not text:
+            return text
+        m = re.search(r"\s+\*\s+\*\s+\[", text)
+        if m is not None and m.start() >= 24:
+            text = text[: m.start()].strip()
+        if len(re.findall(r"\[[^\]]+\]\([^)]+\)", text)) >= 8:
+            cut = re.search(r"\s+\[[^\]]+\]\(/pubs\?", text)
+            if cut is not None and cut.start() >= 40:
+                text = text[: cut.start()].strip()
+        lines_out: list[str] = []
+        for line in text.splitlines():
+            n_links = len(re.findall(r"\[[^\]]+\]\([^)]+\)", line))
+            if n_links >= 4 and len(line) < 800:
+                continue
+            lines_out.append(line)
+        joined = "\n".join(lines_out).strip()
+        return joined if joined else text
+
     def _strip_leading_guap_boilerplate(self, text: str) -> str:
         prefix = (
             r"^\s*ГУАП\s*[—\-]\s*Санкт-Петербургский государственный университет "
@@ -280,6 +303,28 @@ class LLMService:
         )
         text = re.sub(r"\s+", " ", text)
         return text.strip()
+
+    def _strip_markdown_for_speech(self, text: str) -> str:
+        """Plain Russian for TTS: no markdown links, no URLs, no **/__."""
+        t = text.strip()
+        if not t:
+            return t
+        for _ in range(24):
+            prev = t
+            t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)
+            if t == prev:
+                break
+        t = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", t)
+        t = re.sub(r"\*\*([^*]+)\*\*", r"\1", t)
+        t = re.sub(r"__([^_]+)__", r"\1", t)
+        t = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", t)
+        t = re.sub(r"https?://[^\s\])]+", "", t)
+        t = re.sub(r"[*_`#>\[\]]", "", t)
+        t = re.sub(r"\s+", " ", t)
+        t = re.sub(
+            r"\bСанкт[\s-]?Петербург", "Санкт-Петербург", t, flags=re.IGNORECASE
+        )
+        return t.strip()
 
     def _dedupe_sentences(self, text: str) -> str:
         parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
@@ -380,7 +425,9 @@ class LLMService:
         return (
             f"История диалога:\n{history_str or 'история пуста'}\n\n"
             f"Контекст RAG:\n{rag_context or 'контекст не найден'}\n\n"
-            f"Запрос пользователя:\n{text}"
+            f"Запрос пользователя:\n{text}\n\n"
+            "Если в контексте есть только навигация (списки ссылок) или нерелевантные абзацы, "
+            "игнорируй их и ответь по сути вопроса своими словами."
         )
 
     def _normalize_external_history(self, history: list | None) -> list[dict[str, str]]:
@@ -820,7 +867,7 @@ class LLMService:
         return filtered or rag_chunks
 
     def _extract_speaker_local(self, display_text: str, user_text: str) -> str:
-        plain = self._to_plain_text(display_text)
+        plain = self._strip_markdown_for_speech(display_text)
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain) if s.strip()]
         if not sentences:
             return plain
@@ -913,6 +960,7 @@ class LLMService:
             max_tokens=300,
         )
         display_text = self._sanitize_markdown_lite(display_raw)
+        display_text = self._strip_nav_link_soup(display_text)
         display_text = self._dedupe_sentences(display_text)
         display_text = self._strip_leading_guap_boilerplate(display_text)
         display_text, policy_removed = self._remove_policy_artifacts(display_text)
@@ -941,6 +989,7 @@ class LLMService:
             extractive = self._extractive_grounded_fallback(text, intent, rag_chunks)
             if extractive:
                 display_text = self._sanitize_markdown_lite(extractive)
+                display_text = self._strip_nav_link_soup(display_text)
                 display_text = self._dedupe_sentences(display_text)
                 display_text = self._strip_leading_guap_boilerplate(display_text)
                 display_text, changed_identity = self._enforce_university_identity(
@@ -990,7 +1039,7 @@ class LLMService:
                 speaker_text = ""
 
         if speaker_text:
-            speaker_text = self._to_plain_text(speaker_text)
+            speaker_text = self._strip_markdown_for_speech(speaker_text)
             speaker_text = self._dedupe_sentences(speaker_text)
             speaker_text, speaker_policy_removed = self._remove_policy_artifacts(
                 speaker_text
