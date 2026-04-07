@@ -30,7 +30,7 @@ import torch
 
 LANGUAGE = "ru"
 MODEL_ID = "v5_ru"
-DEFAULT_SPEAKER = "aidar"
+DEFAULT_SPEAKER = "kseniya"
 DEFAULT_SAMPLE_RATE = 48000
 SPEAKERS = ["aidar", "baya", "kseniya", "xenia", "eugene"]
 

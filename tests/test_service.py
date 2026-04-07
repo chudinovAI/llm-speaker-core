@@ -6,48 +6,50 @@ from llm_speaker_core.settings import SETTINGS
 
 
 class FakeLLM:
-    def __init__(self, speaker_should_fail: bool = False) -> None:
-        self.speaker_should_fail = speaker_should_fail
+    def __init__(self, with_links: bool = False) -> None:
+        self.with_links = with_links
         self.calls = 0
 
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str:
         self.calls += 1
-        if "Сожми текст" in system_prompt:
-            if self.speaker_should_fail:
-                raise RuntimeError("speaker down")
-            return "Кратко: это ключевой ответ для озвучки в динамик"
-        return "**Ответ** " + "слово " * 200
+        display = "**Ответ** " + "слово " * 200
+        if self.with_links:
+            display += " [Контакты](https://guap.ru/contacts) https://guap.ru/rasp "
+        return (
+            f"<display>{display}</display>"
+            "<speaker>Кратко: это ключевой ответ для озвучки в динамик</speaker>"
+        )
 
 
 class FakeHallucinatingLLM:
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str:
-        return "Точная стоимость обучения составляет уникальную сумму, недоступную в контексте."
+        return (
+            "<display>Точная стоимость обучения составляет уникальную сумму, "
+            "недоступную в контексте.</display><speaker>Уникальная сумма.</speaker>"
+        )
 
 
 class FakeListOnlyLLM:
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str:
-        if "Сожми текст" in system_prompt:
-            return "2."
-        return "2."
+        return "<display>2.</display><speaker>2.</speaker>"
 
 
 class FakeMenuLikeLLM:
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str:
-        if "Сожми текст" in system_prompt:
-            return "Стоимость зависит от программы и формы."
         return (
-            "Информация о порядке оказания платных образовательных услуг "
+            "<display>Информация о порядке оказания платных образовательных услуг "
             "Положение о платных образовательных услугах Формы договоров "
             "Стоимость обучения Комиссия по внебюджетной деятельности "
-            "Оплата обучения и проживания в общежитиях Формы договоров."
+            "Оплата обучения и проживания в общежитиях Формы договоров.</display>"
+            "<speaker>Стоимость зависит от программы и формы.</speaker>"
         )
 
 
@@ -55,12 +57,35 @@ class FakeAdmissionVagueLLM:
     def generate(
         self, system_prompt: str, user_prompt: str, max_tokens: int = 180
     ) -> str:
-        if "Сожми текст" in system_prompt:
-            return "Уточняйте правила в разделе для абитуриентов."
         return (
-            "Однако, исходя из предоставленного списка возможностей сервиса, "
-            "можно выделить основные категории направлений подготовки."
+            "<display>Однако, исходя из предоставленного списка возможностей сервиса, "
+            "можно выделить основные категории направлений подготовки.</display>"
+            "<speaker>Уточняйте правила в разделе для абитуриентов.</speaker>"
         )
+
+
+class FakeMissingSpeakerTagLLM:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
+        return "<display>ГУАП университет в Санкт-Петербурге.</display>"
+
+
+class FakeLongBrokenTailLLM:
+    def generate(
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 180
+    ) -> str:
+        display = (
+            "<display>Первое короткое предложение. "
+            "Второе предложение достаточно длинное и содержит много слов для проверки "
+            "ограничения длины ответа и того как сервис обрабатывает обрезание текста "
+            "после лимита слов и не оставляет ответ в виде оборванного хвоста и</display>"
+        )
+        speaker = (
+            "<speaker>Второе предложение достаточно длинное и содержит много слов "
+            "для проверки ограничения длины ответа и</speaker>"
+        )
+        return display + speaker
 
 
 class StubRetrieval:
@@ -109,24 +134,21 @@ def test_service_limits_and_memory() -> None:
     result = service.handle_query("Расскажи про ГУАП", "s1")
 
     assert len(result.display_text.split()) <= SETTINGS.max_display_words
-    assert len(result.speaker_text.split()) <= SETTINGS.max_speaker_words
+    assert len(result.speaker_text) <= SETTINGS.max_speaker_chars + 1
     assert result.used_rag is True
     assert result.fallback_used is False
     assert service.memory.get("s1")
     assert cast(FakeLLM, service.llm).calls == 1
 
 
-def test_service_speaker_fallback() -> None:
+def test_service_falls_back_to_local_speaker_when_tag_missing() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(
-        rag=rag, llm=FakeLLM(speaker_should_fail=True), speaker_mode="llm"
-    )
+    service = LLMService(rag=rag, llm=FakeMissingSpeakerTagLLM(), speaker_mode="llm")
 
     result = service.handle_query("Расскажи про ГУАП", "s2")
 
     assert result.display_text
-    assert result.speaker_text == ""
-    assert result.fallback_used is True
+    assert result.speaker_text
 
 
 def test_service_uses_extractive_fallback_when_grounding_drops_answer() -> None:
@@ -161,6 +183,7 @@ def test_tuition_speaker_policy_prefers_actionable_summary() -> None:
     result = service.handle_query("Сколько стоит обучение в ГУАП?", "s4")
 
     assert "платных услуг гуап" in result.speaker_text.lower()
+    assert cast(FakeLLM, service.llm).calls == 1
 
 
 def test_low_info_display_is_replaced_by_extractive() -> None:
@@ -192,6 +215,37 @@ def test_tuition_menu_like_display_is_replaced_by_summary() -> None:
     result = service.handle_query("Сколько стоит обучение в ГУАП?", "s6")
 
     assert "актуальные цены" in result.display_text.lower()
+
+
+def test_service_removes_links_from_display_and_speech() -> None:
+    rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
+    service = LLMService(rag=rag, llm=FakeLLM(with_links=True), speaker_mode="llm")
+
+    result = service.handle_query("Расскажи про ГУАП", "s-links")
+
+    assert "https://" not in result.display_text
+    assert "[" not in result.display_text
+    assert "https://" not in result.speaker_text
+
+
+def test_service_limit_words_does_not_leave_broken_tail() -> None:
+    rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
+    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM(), speaker_mode="llm")
+
+    result = service.handle_query("Расскажи про ГУАП", "s-tail")
+
+    assert not result.display_text.endswith(" и.")
+    assert not result.speaker_text.endswith(" и.")
+
+
+def test_service_speaker_is_limited_by_natural_boundary_not_word_cap() -> None:
+    rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
+    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM(), speaker_mode="llm")
+
+    result = service.handle_query("Расскажи про ГУАП", "s-speaker-limit")
+
+    assert len(result.speaker_text) <= SETTINGS.max_speaker_chars + 1
+    assert not result.speaker_text.endswith(" и.")
 
 
 def test_admission_low_evidence_uses_rule_summary() -> None:
@@ -280,4 +334,3 @@ def test_contacts_operational_query_irrelevant_sources_low_evidence_coverage() -
 
     assert result.used_rag is True
     assert result.evidence_coverage < 0.35
-

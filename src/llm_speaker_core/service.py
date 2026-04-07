@@ -234,25 +234,19 @@ class LLMService:
         mode = (speaker_mode or SETTINGS.speaker_mode).lower()
         self.speaker_mode = mode if mode in {"local", "llm"} else "local"
 
-    def _build_display_system_prompt(self) -> str:
+    def _build_combined_system_prompt(self) -> str:
         return (
             "Ты голосовой ассистент ГУАП (Санкт-Петербургский государственный "
             "университет аэрокосмического приборостроения). "
-            "Отвечай на русском языке, кратко и по делу. "
             "Используй только фрагменты контекста, которые прямо относятся к вопросу. "
-            "Не копируй подвал сайта, меню и длинные списки ссылок вида [текст](url). "
+            "Не копируй подвал сайта, меню и длинные списки ссылок. "
             "Не пересказывай случайные новости и чужие имена, если они не отвечают на вопрос. "
-            "Если точного ответа нет — скажи это коротко и дай 1–2 полезные ссылки из контекста "
-            "(например библиотека lib.guap.ru, расписание guap.ru/rasp), без простыни ссылок. "
+            "Не давай ссылки, URL, markdown-ссылки и списки ссылок ни в одном блоке. "
             "Не начинай ответ с расшифровки аббревиатуры ГУАП. "
-            "Формат: 2–4 предложения, **жирный** для ключевого. Без HTML."
-        )
-
-    def _build_speaker_system_prompt(self) -> str:
-        return (
-            "Сожми текст ответа до одного короткого предложения для озвучки. "
-            "Только русский язык, без markdown, без списков. "
-            "Оставь только ключевую информацию. "
+            "Верни ответ строго в формате XML-подобных тегов без дополнительного текста: "
+            "<display>...</display><speaker>...</speaker>. "
+            "Внутри <display> дай 2–4 коротких предложения на русском, можно использовать **жирный** для ключевого. "
+            "Внутри <speaker> дай одно короткое разговорное предложение для озвучки, без markdown и без ссылок. "
             "Запрещено давать неверную расшифровку ГУАП."
         )
 
@@ -266,6 +260,28 @@ class LLMService:
             text,
         )
         return text.strip()
+
+    def _parse_tagged_response(self, text: str) -> tuple[str, str]:
+        display_match = re.search(r"<display>\s*(.*?)\s*</display>", text, re.DOTALL)
+        speaker_match = re.search(r"<speaker>\s*(.*?)\s*</speaker>", text, re.DOTALL)
+        display = display_match.group(1).strip() if display_match else text.strip()
+        speaker = speaker_match.group(1).strip() if speaker_match else ""
+        return display, speaker
+
+    def _strip_links_and_urls(self, text: str) -> str:
+        cleaned = text.strip()
+        if not cleaned:
+            return cleaned
+        for _ in range(24):
+            prev = cleaned
+            cleaned = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cleaned)
+            if cleaned == prev:
+                break
+        cleaned = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", cleaned)
+        cleaned = re.sub(r"https?://[^\s)]+", "", cleaned)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned)
+        cleaned = re.sub(r"\(\s*\)", "", cleaned)
+        return cleaned.strip()
 
     def _strip_nav_link_soup(self, text: str) -> str:
         """Remove footer-style markdown link dumps the model sometimes pastes."""
@@ -365,6 +381,46 @@ class LLMService:
             return text.strip()
         return " ".join(parts[:max_sentences])
 
+    def _limit_speaker_text(self, text: str, max_chars: int) -> tuple[str, bool]:
+        text = text.strip()
+        if not text:
+            return text, False
+        if len(text) <= max_chars:
+            return text, False
+
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", text)
+            if sentence.strip()
+        ]
+        if sentences:
+            kept: list[str] = []
+            current_len = 0
+            for sentence in sentences:
+                extra = len(sentence) + (1 if kept else 0)
+                if kept and current_len + extra > max_chars:
+                    break
+                if not kept and len(sentence) > max_chars:
+                    break
+                kept.append(sentence)
+                current_len += extra
+            if kept:
+                return " ".join(kept).strip(), True
+
+        cut = text[:max_chars].rstrip()
+        last_punct = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
+        if last_punct >= int(len(cut) * 0.45):
+            return cut[: last_punct + 1].strip(), True
+
+        words = cut.split()
+        while len(words) > 1:
+            tail = words[-1].strip(".,!?;:-").lower()
+            if len(tail) >= 3:
+                break
+            words.pop()
+        trimmed = " ".join(words).rstrip(",;:-").strip()
+        return trimmed or cut, True
+
     def _finalize_display_tail(self, text: str) -> tuple[str, bool]:
         text = text.strip()
         if not text:
@@ -412,7 +468,38 @@ class LLMService:
         words = text.split()
         if len(words) <= max_words:
             return text, False
-        return " ".join(words[:max_words]).strip(), True
+
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", text.strip())
+            if sentence.strip()
+        ]
+        if sentences:
+            kept_sentences: list[str] = []
+            used_words = 0
+            for sentence in sentences:
+                sentence_words = sentence.split()
+                if not sentence_words:
+                    continue
+                if kept_sentences and used_words + len(sentence_words) > max_words:
+                    break
+                if not kept_sentences and len(sentence_words) > max_words:
+                    break
+                kept_sentences.append(sentence)
+                used_words += len(sentence_words)
+            if kept_sentences:
+                return " ".join(kept_sentences).strip(), True
+
+        trimmed_words = words[:max_words]
+        while len(trimmed_words) > 1:
+            tail = trimmed_words[-1].strip(".,!?;:-").lower()
+            if len(tail) >= 3:
+                break
+            trimmed_words.pop()
+        if not trimmed_words:
+            trimmed_words = words[:1]
+        trimmed = " ".join(trimmed_words).rstrip(",;:-")
+        return trimmed.strip(), True
 
     def _compose_user_prompt(
         self, session_id: str, text: str, rag_chunks: list[dict]
@@ -954,12 +1041,14 @@ class LLMService:
         rag_sources = [str(c.get("source", "")) for c in rag_chunks]
         evidence_coverage = self._estimate_evidence_coverage(text, rag_chunks)
 
-        display_raw = self.llm.generate(
-            system_prompt=self._build_display_system_prompt(),
+        combined_raw = self.llm.generate(
+            system_prompt=self._build_combined_system_prompt(),
             user_prompt=self._compose_user_prompt(session_id, text, rag_chunks),
-            max_tokens=300,
+            max_tokens=420,
         )
+        display_raw, speaker_raw = self._parse_tagged_response(combined_raw)
         display_text = self._sanitize_markdown_lite(display_raw)
+        display_text = self._strip_links_and_urls(display_text)
         display_text = self._strip_nav_link_soup(display_text)
         display_text = self._dedupe_sentences(display_text)
         display_text = self._strip_leading_guap_boilerplate(display_text)
@@ -989,6 +1078,7 @@ class LLMService:
             extractive = self._extractive_grounded_fallback(text, intent, rag_chunks)
             if extractive:
                 display_text = self._sanitize_markdown_lite(extractive)
+                display_text = self._strip_links_and_urls(display_text)
                 display_text = self._strip_nav_link_soup(display_text)
                 display_text = self._dedupe_sentences(display_text)
                 display_text = self._strip_leading_guap_boilerplate(display_text)
@@ -1022,23 +1112,10 @@ class LLMService:
         display_text, tail_fixed = self._finalize_display_tail(display_text)
         limits_applied = limits_applied or tail_fixed
 
-        speaker_text = ""
-        if self.speaker_mode == "local":
-            speaker_text = self._extract_speaker_local(display_text, text)
-        else:
-            try:
-                speaker_raw = self.llm.generate(
-                    system_prompt=self._build_speaker_system_prompt(),
-                    user_prompt=display_text,
-                    max_tokens=28,
-                )
-                speaker_text = speaker_raw
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("speaker generation failed: %s", exc)
-                fallback_used = True
-                speaker_text = ""
+        speaker_text = speaker_raw or self._extract_speaker_local(display_text, text)
 
         if speaker_text:
+            speaker_text = self._strip_links_and_urls(speaker_text)
             speaker_text = self._strip_markdown_for_speech(speaker_text)
             speaker_text = self._dedupe_sentences(speaker_text)
             speaker_text, speaker_policy_removed = self._remove_policy_artifacts(
@@ -1057,10 +1134,12 @@ class LLMService:
                 rag_sources=rag_sources,
                 display_text=display_text,
             )
-            speaker_text, speaker_limited = self._limit_words(
-                speaker_text, SETTINGS.max_speaker_words
+            speaker_text, speaker_limited = self._limit_speaker_text(
+                speaker_text, SETTINGS.max_speaker_chars
             )
             limits_applied = limits_applied or speaker_limited
+            speaker_text, speaker_tail_fixed = self._finalize_display_tail(speaker_text)
+            limits_applied = limits_applied or speaker_tail_fixed
 
         if not display_text:
             fallback_used = True

@@ -71,6 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSONL path for internal voice events.",
     )
     parser.add_argument(
+        "--control-output",
+        type=Path,
+        default=Path("runtime/voice_control.json"),
+        help="Shared control file for ASR mute/unmute state.",
+    )
+    parser.add_argument(
         "--poll-interval",
         type=float,
         default=0.15,
@@ -185,6 +191,14 @@ def _write_display_output(path: Path | None, display_text: str) -> None:
         f.write(block)
 
 
+def _write_control_output(path: Path | None, *, mic_muted: bool) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"mic_muted": mic_muted, "updated_at": time.time()}
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
 def _emit(
     sink: VoiceEventSink | None,
     callback: Callable[[VoiceEvent], None] | None,
@@ -216,6 +230,7 @@ def run_bridge(
     service = build_service(retrieval_runtime_mode=args.retrieval_mode)
     tts_counter = 0
     event_sink = CompositeVoiceEventSink(JsonlVoiceEventSink(args.events_out))
+    _write_control_output(getattr(args, "control_output", None), mic_muted=False)
 
     with (
         args.input.open("r", encoding="utf-8") as in_f,
@@ -241,6 +256,9 @@ def run_bridge(
                 VoiceEvent(kind="transcript_final", session_id=args.session_id, text=text),
             )
             try:
+                _write_control_output(
+                    getattr(args, "control_output", None), mic_muted=True
+                )
                 print(f'[ASR->LLM] generating (model + RAG)...', flush=True)
                 result = _direct_query(service, text, args.session_id)
 
@@ -313,7 +331,13 @@ def run_bridge(
                             meta={"wav_path": str(wav_path)},
                         ),
                     )
+                _write_control_output(
+                    getattr(args, "control_output", None), mic_muted=False
+                )
             except Exception as exc:  # noqa: BLE001
+                _write_control_output(
+                    getattr(args, "control_output", None), mic_muted=False
+                )
                 err = {"ts": ts, "input_text": text, "error": str(exc)}
                 out_f.write(json.dumps(err, ensure_ascii=False) + "\n")
                 hint = ""

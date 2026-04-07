@@ -9,6 +9,7 @@ from llm_speaker_core.voice import asr as asr_module
 from llm_speaker_core.voice.bridge import run_bridge
 from llm_speaker_core.voice.events import VoiceEvent
 from llm_speaker_core.voice.session import VoiceRuntimePaths, VoiceSessionController
+from llm_speaker_core.voice.tts import DEFAULT_SPEAKER
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--stop-words", type=str, default=None, help="Comma-separated stop words."
     )
     parser.add_argument("--no-speaker-verify", action="store_true")
-    parser.add_argument("--tts-speaker", type=str, default="aidar")
+    parser.add_argument("--tts-speaker", type=str, default=DEFAULT_SPEAKER)
     parser.add_argument(
         "--tts-sample-rate", type=int, default=48000, choices=[8000, 24000, 48000]
     )
@@ -86,6 +87,8 @@ def main() -> None:
         args.wake_word,
         "--output",
         str(paths.asr_output),
+        "--control-file",
+        str(paths.control_output),
     ]
     if args.asr_device is not None:
         asr_cmd.extend(["--device", str(args.asr_device)])
@@ -105,6 +108,7 @@ def main() -> None:
         display_output=paths.display_output,
         speaker_output=paths.speaker_output,
         events_out=paths.events_output,
+        control_output=paths.control_output,
         poll_interval=0.15,
         from_start=False,
         tts_enabled=True,

@@ -29,6 +29,7 @@ data/normalized/*
 !data/indexes/
 data/indexes/*
 !data/indexes/**
+**/.DS_Store
 guap_docs/
 runtime/
 *.wav

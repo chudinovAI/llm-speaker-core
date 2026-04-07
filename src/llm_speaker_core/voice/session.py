@@ -23,6 +23,7 @@ class VoiceRuntimePaths:
     display_output: Path
     speaker_output: Path
     events_output: Path
+    control_output: Path
     tts_dir: Path
 
     @classmethod
@@ -34,6 +35,7 @@ class VoiceRuntimePaths:
             display_output=runtime_dir / "display_output.txt",
             speaker_output=runtime_dir / "speaker_output.txt",
             events_output=runtime_dir / "voice_events.jsonl",
+            control_output=runtime_dir / "voice_control.json",
             tts_dir=runtime_dir / "tts",
         )
 
@@ -56,4 +58,3 @@ class VoiceSessionController:
             self.state = VoiceState.ERROR
         elif event.kind == "session_started":
             self.state = VoiceState.LISTENING
-

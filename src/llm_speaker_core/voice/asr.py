@@ -8,6 +8,7 @@ CLI examples:
 """
 
 import argparse
+import json
 import queue
 import re
 import sys
@@ -537,6 +538,7 @@ class ASRPipeline:
         stop_words: list[str] | None = None,
         speaker_verify: bool = True,
         output_path: str | Path = "asr_output.txt",
+        control_path: str | Path | None = None,
     ):
         # - Компоненты -
         self.vad = SileroVAD(threshold=VAD_THRESHOLD)
@@ -546,6 +548,7 @@ class ASRPipeline:
         self.stop_detector = StopWordDetector(stop_words or DEFAULT_STOP_WORDS)
         self.mic = MicrophoneStream(device_index=mic_device)
         self.output = ASROutput(output_path)
+        self.control_path = Path(control_path) if control_path is not None else None
 
         self.speaker_verify = speaker_verify
         self.verifier: SpeakerVerifier | None = None
@@ -572,6 +575,7 @@ class ASRPipeline:
         self._asr_queue: queue.Queue[ASRTask] = queue.Queue(maxsize=8)
         self._session_lock = threading.Lock()
         self._mic_muted = threading.Event()
+        self._control_mic_muted = False
 
         # - Callback -
         self.on_transcription: Callable[[str], Any] | None = None
@@ -580,14 +584,41 @@ class ASRPipeline:
 
     def mute_mic(self):
         """Замьютить обработку речи (вызывать когда TTS говорит)."""
+        if self._mic_muted.is_set():
+            return
         self._mic_muted.set()
-        print("  [MIC] Замьючен (TTS)")
+        self.speech_buffer = []
+        self.pre_buffer.clear()
+        self.vad.reset()
+        self.vad_state = self.VAD_IDLE
+        print("  [MIC] Замьючен (LLM/TTS)")
 
     def unmute_mic(self):
         """Размьютить обработку речи."""
+        if not self._mic_muted.is_set():
+            return
         self._mic_muted.clear()
         self.vad.reset()
+        with self._session_lock:
+            if self.session.active:
+                self.session.last_speech_at = time.monotonic()
         print("  [MIC] Размьючен")
+
+    def _sync_control_state(self):
+        if self.control_path is None or not self.control_path.exists():
+            return
+        try:
+            payload = json.loads(self.control_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        muted = bool(payload.get("mic_muted", False))
+        if muted == self._control_mic_muted:
+            return
+        self._control_mic_muted = muted
+        if muted:
+            self.mute_mic()
+        else:
+            self.unmute_mic()
 
     # - VAD стейт-машина -
 
@@ -706,6 +737,8 @@ class ASRPipeline:
                 # Если в очереди уже есть FINAL - partial не нужен
                 if not self._asr_queue.empty():
                     continue
+            if self._mic_muted.is_set():
+                continue
 
             with self._session_lock:
                 session_active = self.session.active
@@ -912,6 +945,8 @@ class ASRPipeline:
         with self._session_lock:
             if not self.session.active:
                 return
+            if self._mic_muted.is_set():
+                return
 
             now = time.monotonic()
             idle = now - self.session.last_speech_at
@@ -969,6 +1004,7 @@ class ASRPipeline:
         try:
             while self._running:
                 chunk = self.mic.get_chunk(timeout=0.5)
+                self._sync_control_state()
                 if chunk is not None:
                     self._process_chunk(chunk)
 
@@ -1042,6 +1078,12 @@ def main():
         default="runtime/asr_output.txt",
         help="Путь к файлу для LLM (default: runtime/asr_output.txt)",
     )
+    parser.add_argument(
+        "--control-file",
+        type=str,
+        default=None,
+        help="JSON-файл управления mute/unmute от voice bridge.",
+    )
 
     args = parser.parse_args()
 
@@ -1060,6 +1102,7 @@ def main():
         stop_words=stop_words,
         speaker_verify=not args.no_speaker_verify,
         output_path=args.output,
+        control_path=args.control_file,
     )
     pipeline.run()
 
