@@ -59,6 +59,12 @@ class CrossEncoderReranker:
             raw_scores = self._model.compute_score(pairs)
             if isinstance(raw_scores, list):
                 scores = [float(score) for score in raw_scores]
+            elif hasattr(raw_scores, "tolist"):
+                values = raw_scores.tolist()
+                if isinstance(values, list):
+                    scores = [float(score) for score in values]
+                else:
+                    scores = [float(values)]
             else:
                 scores = [float(cast(float, raw_scores))]
         else:
