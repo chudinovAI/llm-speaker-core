@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from llm_speaker_core.app.bootstrap import build_service
+from llm_speaker_core.bootstrap import build_service
 from llm_speaker_core.voice.events import (
     CompositeVoiceEventSink,
     JsonlVoiceEventSink,

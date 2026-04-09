@@ -1,4 +1,3 @@
-import json
 from typing import cast
 
 from llm_speaker_core.service import LLMService
@@ -129,7 +128,7 @@ def _doc(
 
 def test_service_limits_and_memory() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+    service = LLMService(rag=rag, llm=FakeLLM())
 
     result = service.handle_query("Расскажи про ГУАП", "s1")
 
@@ -143,7 +142,7 @@ def test_service_limits_and_memory() -> None:
 
 def test_service_falls_back_to_local_speaker_when_tag_missing() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(rag=rag, llm=FakeMissingSpeakerTagLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeMissingSpeakerTagLLM())
 
     result = service.handle_query("Расскажи про ГУАП", "s2")
 
@@ -179,7 +178,7 @@ def test_tuition_speaker_policy_prefers_actionable_summary() -> None:
             )
         ]
     )
-    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeLLM())
     result = service.handle_query("Сколько стоит обучение в ГУАП?", "s4")
 
     assert "платных услуг гуап" in result.speaker_text.lower()
@@ -195,7 +194,7 @@ def test_low_info_display_is_replaced_by_extractive() -> None:
             )
         ]
     )
-    service = LLMService(rag=rag, llm=FakeListOnlyLLM(), speaker_mode="local")
+    service = LLMService(rag=rag, llm=FakeListOnlyLLM())
     result = service.handle_query("Стоимость обучения в ГУАП?", "s5")
 
     assert result.display_text != "2."
@@ -211,7 +210,7 @@ def test_tuition_menu_like_display_is_replaced_by_summary() -> None:
             )
         ]
     )
-    service = LLMService(rag=rag, llm=FakeMenuLikeLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeMenuLikeLLM())
     result = service.handle_query("Сколько стоит обучение в ГУАП?", "s6")
 
     assert "актуальные цены" in result.display_text.lower()
@@ -219,7 +218,7 @@ def test_tuition_menu_like_display_is_replaced_by_summary() -> None:
 
 def test_service_removes_links_from_display_and_speech() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(rag=rag, llm=FakeLLM(with_links=True), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeLLM(with_links=True))
 
     result = service.handle_query("Расскажи про ГУАП", "s-links")
 
@@ -230,7 +229,7 @@ def test_service_removes_links_from_display_and_speech() -> None:
 
 def test_service_limit_words_does_not_leave_broken_tail() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM())
 
     result = service.handle_query("Расскажи про ГУАП", "s-tail")
 
@@ -240,7 +239,7 @@ def test_service_limit_words_does_not_leave_broken_tail() -> None:
 
 def test_service_speaker_is_limited_by_natural_boundary_not_word_cap() -> None:
     rag = StubRetrieval([_doc("https://guap.ru", "ГУАП университет в Санкт-Петербурге")])
-    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeLongBrokenTailLLM())
 
     result = service.handle_query("Расскажи про ГУАП", "s-speaker-limit")
 
@@ -257,7 +256,7 @@ def test_admission_low_evidence_uses_rule_summary() -> None:
             )
         ]
     )
-    service = LLMService(rag=rag, llm=FakeAdmissionVagueLLM(), speaker_mode="llm")
+    service = LLMService(rag=rag, llm=FakeAdmissionVagueLLM())
     result = service.handle_query("Какие направления есть в ГУАПе?", "s7")
 
     assert "проверьте актуальные правила и сроки" in result.display_text.lower()
@@ -284,7 +283,7 @@ def test_general_query_with_irrelevant_science_sources_becomes_uncertain() -> No
             ),
         ]
     )
-    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+    service = LLMService(rag=rag, llm=FakeLLM())
 
     result = service.handle_query("Расскажи про расписание библиотеки.", "s8")
 
@@ -302,7 +301,7 @@ def test_general_query_with_supported_facet_remains_grounded() -> None:
             )
         ]
     )
-    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+    service = LLMService(rag=rag, llm=FakeLLM())
 
     result = service.handle_query("Что такое ВРМП в ГУАП?", "s9")
 
@@ -328,7 +327,7 @@ def test_contacts_operational_query_irrelevant_sources_low_evidence_coverage() -
             ),
         ]
     )
-    service = LLMService(rag=rag, llm=FakeLLM(), speaker_mode="local")
+    service = LLMService(rag=rag, llm=FakeLLM())
 
     result = service.handle_query("А какое расписание отдела кадров?", "s10")
 

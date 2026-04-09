@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from llm_speaker_core.llm_runtime.client import OllamaClient
+from llm_speaker_core.ollama import OllamaClient
 from llm_speaker_core.retrieval.service import HybridRetrievalService
 from llm_speaker_core.service import LLMService, RetrievalProtocol
 from llm_speaker_core.settings import SETTINGS
@@ -35,6 +35,7 @@ def build_service(retrieval_runtime_mode: str = "full") -> LLMService:
         raise RuntimeError(
             "Hybrid retrieval manifest is missing. Build the new index at data/index_manifest.json."
         )
+
     llm = OllamaClient(
         base_url=SETTINGS.ollama_base_url,
         model=SETTINGS.ollama_model,

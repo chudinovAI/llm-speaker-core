@@ -46,4 +46,3 @@ class OllamaClient:
                 f"Invalid ollama response: {json.dumps(data, ensure_ascii=False)}"
             )
         return content.strip()
-

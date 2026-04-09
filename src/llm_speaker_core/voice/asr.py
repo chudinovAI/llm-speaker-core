@@ -4,7 +4,7 @@ ASR pipeline based on GigaAM v3 streaming.
 CLI examples:
   uv run llm-asr --list-devices
   uv run llm-asr --device 1
-  uv run llm-asr --wake-word "привет гуап" --no-speaker-verify
+  uv run llm-asr --wake-word "привет коробка" --no-speaker-verify
 """
 
 import argparse

@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from llm_speaker_core.app import bootstrap
+from llm_speaker_core import bootstrap
 
 
 class DummyRetrieval:

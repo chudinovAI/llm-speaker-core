@@ -28,7 +28,7 @@ uv run llm-build-hybrid-index
 
 ```bash
 ollama serve
-ollama run qwen3.5:2b --think=false "Привет"
+ollama run qwen3.5:9b --think=false "Привет"
 ```
 
 ## Step 4. Run voice stack
@@ -38,11 +38,11 @@ uv run llm-voice-stack --list-devices
 
 uv run llm-voice-stack \
  --asr-device 0 \
- --wake-word "привет гуап" \
+ --wake-word "привет коробка" \
  --no-speaker-verify
 ```
 
-Звук в динамики включён по умолчанию; только запись WAV без проигрывания: `--no-tts-play`.
+Звук в динамики включён по умолчанию; женский голос `kseniya` выбран по умолчанию. Только запись WAV без проигрывания: `--no-tts-play`.
 
 В каталоге `runtime/` (или `--runtime-dir`): полный текст ответа для UI — **`display_output.txt`** (блоки текста, разделитель `---`), озвучка — **`speaker_output.txt`**, полный лог — **`asr_llm_output.jsonl`**.
 
