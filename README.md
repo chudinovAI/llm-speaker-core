@@ -42,9 +42,9 @@ uv run llm-voice-stack \
  --no-speaker-verify
 ```
 
-Звук в динамики включён по умолчанию; женский голос `kseniya` выбран по умолчанию. Только запись WAV без проигрывания: `--no-tts-play`.
+Speaker playback is enabled by default; the female voice `kseniya` is selected by default. To record WAV without playback: `--no-tts-play`.
 
-В каталоге `runtime/` (или `--runtime-dir`): полный текст ответа для UI — **`display_output.txt`** (блоки текста, разделитель `---`), озвучка — **`speaker_output.txt`**, полный лог — **`asr_llm_output.jsonl`**.
+In the `runtime/` directory (or `--runtime-dir`): the full response text for the UI is in **`display_output.txt`** (text blocks separated by `---`), speech output is in **`speaker_output.txt`**, and the full log is in **`asr_llm_output.jsonl`**.
 
 ## Retrieval modes
 
